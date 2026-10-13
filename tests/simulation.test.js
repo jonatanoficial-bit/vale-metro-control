@@ -63,3 +63,33 @@ test("manutenção não pode ser mobilizada duas vezes para a mesma ocorrência"
   assert.equal(first.accepted, true);
   assert.equal(second.accepted, false);
 });
+
+test("uma falha de sinal bloqueia o corredor até o isolamento ser concluído", () => {
+  const session = createInitialSession();
+  tickSession(session, 360);
+  const incident = session.incidents.find((item) => item.id === "signal-fault");
+  assert.equal(incident.status, "active");
+  assert.deepEqual(session.network.blockedSegments, ["central:riverside"]);
+  const result = applyCommand(session, { id: "signal-1", type: "ISOLATE_SIGNAL", incidentId: "signal-fault" });
+  assert.equal(result.accepted, true);
+  tickSession(session, 22);
+  assert.equal(incident.status, "resolved");
+  assert.deepEqual(session.network.blockedSegments, []);
+  assert.equal(session.missions.signal, true);
+  assert.equal(session.staff.signalAvailable, 1);
+});
+
+test("o plano de passageiros reduz filas e não pode ser duplicado", () => {
+  const session = createInitialSession();
+  tickSession(session, 360);
+  const before = session.stations.find((station) => station.id === "central").queue
+    + session.stations.find((station) => station.id === "riverside").queue;
+  const first = applyCommand(session, { id: "passengers-1", type: "DIRECT_PASSENGERS", incidentId: "signal-fault" });
+  const second = applyCommand(session, { id: "passengers-2", type: "DIRECT_PASSENGERS", incidentId: "signal-fault" });
+  const after = session.stations.find((station) => station.id === "central").queue
+    + session.stations.find((station) => station.id === "riverside").queue;
+  assert.equal(first.accepted, true);
+  assert.equal(second.accepted, false);
+  assert.ok(after < before);
+  assert.equal(session.missions.passengers, true);
+});

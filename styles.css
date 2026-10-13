@@ -156,6 +156,9 @@ h2 { margin-bottom: 0; font-size: 1rem; }
 .mission-list li.done { color: #d7f8e7; }
 .mission-list li.done::before { border-color: var(--green); background: var(--green); color: #052414; content: "✓"; font-size: 0.7rem; font-weight: 900; }
 .alert-card p { margin: 0.8rem 0 0; color: #d5e4ef; font-size: 0.79rem; line-height: 1.5; }
+.alert-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.45rem; margin-top: 0.7rem; }
+.alert-actions:empty { display: none; }
+.alert-actions .button { min-height: 2.25rem; padding: 0.45rem 0.55rem; font-size: 0.67rem; }
 .text-button { border: 0; background: transparent; color: var(--cyan); font-size: 0.72rem; font-weight: 800; }
 .event-log { display: grid; gap: 0.27rem; margin: 0.68rem 0 0; padding: 0; list-style: none; }
 .event-log li { overflow: hidden; color: var(--muted); font-size: 0.67rem; text-overflow: ellipsis; white-space: nowrap; }

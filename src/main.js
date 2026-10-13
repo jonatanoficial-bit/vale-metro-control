@@ -31,6 +31,7 @@ const els = {
   alertTitle: document.querySelector("#alert-title"),
   alertDescription: document.querySelector("#alert-description"),
   alertSeverity: document.querySelector("#alert-severity"),
+  alertActions: document.querySelector("#alert-actions"),
   eventLog: document.querySelector("#event-log"),
   live: document.querySelector("#live-region"),
   portrait: document.querySelector("#portrait-notice"),
@@ -59,6 +60,12 @@ async function init() {
     button.addEventListener("click", () => setTimeScale(Number(button.dataset.time)));
   });
   els.dispatchReserve.addEventListener("click", () => runCommand({ type: "DISPATCH_RESERVE" }));
+  els.alertActions.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-alert-command]");
+    if (!button || button.disabled) return;
+    if (button.dataset.alertCommand === "signal") runCommand({ type: "ISOLATE_SIGNAL", incidentId: button.dataset.incident });
+    if (button.dataset.alertCommand === "passengers") runCommand({ type: "DIRECT_PASSENGERS", incidentId: button.dataset.incident });
+  });
   els.resumeSaved.addEventListener("click", continueSavedSession);
   document.querySelector("#continue-session").addEventListener("click", continueSavedSession);
   els.canvas.addEventListener("click", selectFromMap);
@@ -130,8 +137,9 @@ function render() {
   els.balance.textContent = formatCurrency(session.balanceCents);
   els.xp.textContent = `${session.xp} XP`;
   const activeIncidents = getActiveIncidents(session);
-  els.lineStatus.textContent = activeIncidents.length ? "ATENÇÃO" : "EM OPERAÇÃO";
-  els.lineStatus.className = `status-pill ${activeIncidents.length ? "warning" : "good"}`;
+  const emergency = activeIncidents.some((incident) => incident.severity === "critical");
+  els.lineStatus.textContent = emergency ? "EMERGÊNCIA" : activeIncidents.length ? "ATENÇÃO" : "EM OPERAÇÃO";
+  els.lineStatus.className = `status-pill ${emergency ? "danger" : activeIncidents.length ? "warning" : "good"}`;
   renderTrains();
   renderContext();
   renderMission();
@@ -226,25 +234,42 @@ function renderMission() {
     [session.missions.observe, "Selecione um trem ou analise a rede"],
     [session.missions.hold, "Regule o intervalo com uma retenção"],
     [session.missions.reserve, "Envie o trem reserva para aliviar a demanda"],
-    [session.missions.maintenance, "Coordene a resposta a uma falha leve"]
+    [session.missions.maintenance, "Coordene a resposta a uma falha leve"],
+    [session.missions.signal, "Isole uma falha de sinal crítica"],
+    [session.missions.passengers, "Direcione passageiros durante uma emergência"]
   ];
   els.missionList.innerHTML = missions.map(([done, text]) => `<li class="${done ? "done" : ""}">${text}</li>`).join("");
 }
 
 function renderAlerts() {
-  const incident = getActiveIncidents(session).find((item) => item.type === "Falha de porta") || getActiveIncidents(session)[0];
+  const incident = getActiveIncidents(session).find((item) => item.type === "Falha de sinal")
+    || getActiveIncidents(session).find((item) => item.type === "Falha de porta")
+    || getActiveIncidents(session)[0];
   const critical = getStation(session, session.metrics.criticalStationId);
+  els.alertActions.innerHTML = "";
   if (incident) {
-    if (incident.type === "Falha de porta") {
-      const response = incident.status === "responding" ? `Equipe em resposta: ${incident.responseRemaining}s restantes.` : "Selecione o trem e envie a equipe de manutenção.";
-      els.alertTitle.textContent = `${incident.type} — ${incident.trainId}`;
-      els.alertDescription.textContent = `A composição terá permanência adicional em plataforma. ${response}`;
+    if (incident.type === "Falha de sinal") {
+      const isolating = incident.status === "responding";
+      els.alertTitle.textContent = "Falha de sinal — Central–Riverside";
+      els.alertDescription.textContent = isolating
+        ? `Centro de sinal em resposta: ${incident.responseRemaining}s restantes. O trecho permanece isolado.`
+        : "O corredor foi bloqueado. Isole o sinal e reduza a pressão nas plataformas com agentes de estação.";
+      els.alertSeverity.textContent = "CRÍTICO";
+      els.alertSeverity.className = "status-pill danger";
+      els.alertActions.innerHTML = `<button class="button danger" data-alert-command="signal" data-incident="${incident.id}" ${isolating ? "disabled" : ""}>${isolating ? "Centro de sinal em resposta" : "Isolar sinal"}</button>
+        <button class="button secondary" data-alert-command="passengers" data-incident="${incident.id}" ${incident.passengerPlanActive ? "disabled" : ""}>${incident.passengerPlanActive ? "Passageiros direcionados" : "Direcionar passageiros"}</button>`;
     } else {
-      els.alertTitle.textContent = `Fila elevada em ${critical.name}`;
-      els.alertDescription.textContent = `${critical.queue} passageiros aguardam para uma capacidade de ${critical.capacity}. Considere reforçar a oferta.`;
+      if (incident.type === "Falha de porta") {
+        const response = incident.status === "responding" ? `Equipe em resposta: ${incident.responseRemaining}s restantes.` : "Selecione o trem e envie a equipe de manutenção.";
+        els.alertTitle.textContent = `${incident.type} — ${incident.trainId}`;
+        els.alertDescription.textContent = `A composição terá permanência adicional em plataforma. ${response}`;
+      } else {
+        els.alertTitle.textContent = `Fila elevada em ${critical.name}`;
+        els.alertDescription.textContent = `${critical.queue} passageiros aguardam para uma capacidade de ${critical.capacity}. Considere reforçar a oferta.`;
+      }
+      els.alertSeverity.textContent = "ATENÇÃO";
+      els.alertSeverity.className = "status-pill warning";
     }
-    els.alertSeverity.textContent = "ATENÇÃO";
-    els.alertSeverity.className = "status-pill warning";
   } else {
     els.alertTitle.textContent = "Rede estabilizando";
     els.alertDescription.textContent = `${critical.name} tem a maior fila atual (${critical.queue}), mas permanece abaixo do limite operacional.`;
@@ -309,6 +334,20 @@ function drawTrack(width, height) {
   canvasContext.shadowColor = "#19bfff";
   canvasContext.stroke();
   canvasContext.restore();
+  if (session.network.blockedSegments.includes("central:riverside")) {
+    const central = mapPoint(stationBlueprint.find((station) => station.id === "central"), width, height);
+    const riverside = mapPoint(stationBlueprint.find((station) => station.id === "riverside"), width, height);
+    canvasContext.save();
+    canvasContext.beginPath();
+    canvasContext.moveTo(central.x, central.y);
+    canvasContext.lineTo(riverside.x, riverside.y);
+    canvasContext.strokeStyle = "#ff596b";
+    canvasContext.lineWidth = 7;
+    canvasContext.shadowBlur = 18;
+    canvasContext.shadowColor = "#ff596b";
+    canvasContext.stroke();
+    canvasContext.restore();
+  }
 }
 
 function drawStations(width, height) {
@@ -343,13 +382,13 @@ function drawTrains(width, height) {
     const position = getTrainPosition(session, train);
     const point = { x: position.x * width, y: position.y * height };
     const isSelected = selected?.type === "train" && selected.id === train.id;
-    const paused = ["HELD", "WAITING_SIGNAL", "DISPATCHING"].includes(train.status);
+    const paused = ["HELD", "WAITING_SIGNAL", "DISPATCHING"].includes(train.status) || train.faultActive;
     canvasContext.save();
     canvasContext.translate(point.x, point.y);
     canvasContext.rotate(0.32);
     canvasContext.shadowBlur = isSelected ? 22 : 12;
-    canvasContext.shadowColor = paused ? "#ffbf45" : "#1bd4ff";
-    canvasContext.fillStyle = paused ? "#f5be48" : "#daf5ff";
+    canvasContext.shadowColor = train.faultActive ? "#ff596b" : paused ? "#ffbf45" : "#1bd4ff";
+    canvasContext.fillStyle = train.faultActive ? "#ff8797" : paused ? "#f5be48" : "#daf5ff";
     canvasContext.fillRect(-8, -5, 16, 10);
     canvasContext.fillStyle = "#0c6ba7";
     canvasContext.fillRect(-3, -3, 9, 6);

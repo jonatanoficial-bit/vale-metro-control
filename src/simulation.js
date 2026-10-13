@@ -26,7 +26,7 @@ const statusText = {
 
 export function createInitialSession(mode = "career") {
   const session = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     mode,
     time: 6 * 3600,
     timeScale: 1,
@@ -57,11 +57,18 @@ export function createInitialSession(mode = "career") {
       visible: false,
       holdRequested: false
     },
-    missions: { observe: false, hold: false, reserve: false, maintenance: false },
+    missions: { observe: false, hold: false, reserve: false, maintenance: false, signal: false, passengers: false },
     incidents: [],
     incidentHistory: [],
-    staff: { maintenanceAvailable: 1 },
-    scenario: { doorFaultAt: 6 * 3600 + 180, doorFaultTriggered: false },
+    staff: { maintenanceAvailable: 1, signalAvailable: 1, passengerGuides: 2 },
+    scenario: {
+      doorFaultAt: 6 * 3600 + 180,
+      doorFaultTriggered: false,
+      signalFaultAt: 6 * 3600 + 360,
+      signalFaultTriggered: false
+    },
+    network: { blockedSegments: [] },
+    passengerTransfers: 0,
     log: [],
     commandIds: [],
     metrics: { totalQueue: 0, criticalStationId: "riverside", onTime: 100, activeTrains: 4 }
@@ -72,12 +79,20 @@ export function createInitialSession(mode = "career") {
 }
 
 export function normalizeSession(session) {
-  session.schemaVersion = 2;
-  session.missions = { observe: false, hold: false, reserve: false, maintenance: false, ...session.missions };
+  session.schemaVersion = 3;
+  session.missions = { observe: false, hold: false, reserve: false, maintenance: false, signal: false, passengers: false, ...session.missions };
   session.incidents ??= [];
   session.incidentHistory ??= [];
-  session.staff ??= { maintenanceAvailable: 1 };
-  session.scenario ??= { doorFaultAt: 6 * 3600 + 180, doorFaultTriggered: false };
+  session.staff = { maintenanceAvailable: 1, signalAvailable: 1, passengerGuides: 2, ...session.staff };
+  session.scenario = {
+    doorFaultAt: 6 * 3600 + 180,
+    doorFaultTriggered: false,
+    signalFaultAt: 6 * 3600 + 360,
+    signalFaultTriggered: false,
+    ...session.scenario
+  };
+  session.network = { blockedSegments: [], ...session.network };
+  session.passengerTransfers ??= 0;
   session.commandIds ??= [];
   getAllTrains(session).forEach((train) => { train.faultActive ??= false; });
   return session;
@@ -144,6 +159,12 @@ export function applyCommand(session, command) {
       break;
     case "ASSIGN_MAINTENANCE":
       result = assignMaintenance(session, command.incidentId);
+      break;
+    case "ISOLATE_SIGNAL":
+      result = isolateSignal(session, command.incidentId);
+      break;
+    case "DIRECT_PASSENGERS":
+      result = directPassengers(session, command.incidentId);
       break;
     case "OBSERVE_NETWORK":
       session.missions.observe = true;
@@ -213,6 +234,45 @@ function assignMaintenance(session, incidentId) {
   return accept(`Equipe enviada para ${incident.trainId}; custo operacional registrado.`, { projectedCost: cost });
 }
 
+function isolateSignal(session, incidentId) {
+  const incident = getActiveIncidents(session).find((item) => item.id === incidentId && item.type === "Falha de sinal");
+  const cost = 2_600_00;
+  if (!incident) return reject("Não há uma falha de sinal ativa para isolar.");
+  if (incident.status === "responding") return reject("O centro de sinal já está trabalhando nessa ocorrência.");
+  if (session.staff.signalAvailable < 1) return reject("A equipe de sinal já está comprometida em outra ocorrência.");
+  if (session.balanceCents < cost) return reject("Saldo insuficiente para mobilizar o centro de sinal.");
+  session.staff.signalAvailable -= 1;
+  session.balanceCents -= cost;
+  session.operatingCostCents += cost;
+  incident.status = "responding";
+  incident.responseRemaining = 22;
+  pushLog(session, "Centro de sinal mobilizado para isolar o trecho Central–Riverside.", "warning");
+  return accept("Isolamento autorizado; a liberação do trecho exige 22 s de simulação.", { projectedCost: cost });
+}
+
+function directPassengers(session, incidentId) {
+  const incident = getActiveIncidents(session).find((item) => item.id === incidentId && item.type === "Falha de sinal");
+  const cost = 900_00;
+  if (!incident) return reject("O direcionamento só pode ser usado durante uma emergência ativa.");
+  if (incident.passengerPlanActive) return reject("O plano de direcionamento já está ativo.");
+  if (session.staff.passengerGuides < 1) return reject("Não há agentes de estação disponíveis para orientar passageiros.");
+  if (session.balanceCents < cost) return reject("Saldo insuficiente para ativar o plano de orientação.");
+  const central = getStation(session, "central");
+  const riverside = getStation(session, "riverside");
+  const redirected = Math.min(central.queue, 24) + Math.min(riverside.queue, 38);
+  central.queue -= Math.min(central.queue, 24);
+  riverside.queue -= Math.min(riverside.queue, 38);
+  session.passengerTransfers += redirected;
+  session.staff.passengerGuides -= 1;
+  session.balanceCents -= cost;
+  session.operatingCostCents += cost;
+  incident.passengerPlanActive = true;
+  session.missions.passengers = true;
+  session.xp += 15;
+  pushLog(session, `${redirected} passageiros foram orientados para conexões alternativas.`, "info");
+  return accept(`${redirected} passageiros redirecionados; pressão nas plataformas reduzida.`, { projectedCost: cost, redirected });
+}
+
 export function tickSession(session, seconds = 1) {
   normalizeSession(session);
   for (let tick = 0; tick < seconds; tick += 1) {
@@ -250,9 +310,11 @@ function advanceTrain(session, train) {
   }
   if (train.status === "HELD" || train.status === "DEPOT_READY") return;
   if (train.status === "WAITING_SIGNAL") {
-    if (!segmentOccupied(session, train, train.segmentIndex)) {
+    if (!isSegmentBlocked(session, train, train.segmentIndex) && !segmentOccupied(session, train, train.segmentIndex)) {
       train.status = "EN_ROUTE";
       pushLog(session, `${train.id}: via liberada, retomando movimento.`, "info");
+    } else {
+      train.delaySec += 1;
     }
     return;
   }
@@ -263,7 +325,7 @@ function advanceTrain(session, train) {
     }
     train.dwellRemaining -= 1;
     if (train.dwellRemaining <= 0) {
-      if (segmentOccupied(session, train, train.segmentIndex)) {
+      if (isSegmentBlocked(session, train, train.segmentIndex) || segmentOccupied(session, train, train.segmentIndex)) {
         train.status = "WAITING_SIGNAL";
         train.delaySec += 1;
       } else {
@@ -296,19 +358,28 @@ function advanceTrain(session, train) {
 }
 
 function segmentOccupied(session, currentTrain, segmentIndex) {
-  const [from, to] = [
-    currentTrain.route[segmentIndex % currentTrain.route.length],
-    currentTrain.route[(segmentIndex + 1) % currentTrain.route.length]
-  ].sort();
+  const [from, to] = getSegmentKey(currentTrain, segmentIndex).split(":");
   return getVisibleTrains(session).some((train) => {
     if (train.id === currentTrain.id || train.status !== "EN_ROUTE") return false;
-    const [otherFrom, otherTo] = [getTrainOrigin(train), getTrainTarget(train)].sort();
+    const [otherFrom, otherTo] = getSegmentKey(train, train.segmentIndex).split(":");
     return from === otherFrom && to === otherTo;
   });
 }
 
+function getSegmentKey(train, segmentIndex) {
+  return [
+    train.route[segmentIndex % train.route.length],
+    train.route[(segmentIndex + 1) % train.route.length]
+  ].sort().join(":");
+}
+
+function isSegmentBlocked(session, train, segmentIndex) {
+  return session.network.blockedSegments.includes(getSegmentKey(train, segmentIndex));
+}
+
 function updateIncidents(session) {
   triggerDoorFault(session);
+  triggerSignalFault(session);
   progressIncidentResponses(session);
   updateCrowdingIncident(session);
 }
@@ -331,6 +402,23 @@ function triggerDoorFault(session) {
   pushLog(session, `Ocorrência: ${train.id} reporta falha de porta. Manutenção recomendada.`, "warning");
 }
 
+function triggerSignalFault(session) {
+  if (session.scenario.signalFaultTriggered || session.time < session.scenario.signalFaultAt) return;
+  session.scenario.signalFaultTriggered = true;
+  const blockedSegment = "central:riverside";
+  session.network.blockedSegments.push(blockedSegment);
+  session.incidents.push({
+    id: "signal-fault",
+    type: "Falha de sinal",
+    severity: "critical",
+    blockedSegment,
+    status: "active",
+    passengerPlanActive: false,
+    startedAt: session.time
+  });
+  pushLog(session, "Emergência: falha de sinal bloqueou o corredor Central–Riverside.", "danger");
+}
+
 function progressIncidentResponses(session) {
   for (const incident of getActiveIncidents(session)) {
     if (incident.status !== "responding") continue;
@@ -338,6 +426,13 @@ function progressIncidentResponses(session) {
     if (incident.responseRemaining > 0) continue;
     incident.status = "resolved";
     incident.resolvedAt = session.time;
+    resolveIncident(session, incident);
+    session.incidentHistory.unshift({ ...incident });
+  }
+}
+
+function resolveIncident(session, incident) {
+  if (incident.type === "Falha de porta") {
     const train = getAllTrains(session).find((item) => item.id === incident.trainId);
     if (train) {
       train.faultActive = false;
@@ -346,8 +441,16 @@ function progressIncidentResponses(session) {
     session.staff.maintenanceAvailable += 1;
     session.missions.maintenance = true;
     session.xp += 18;
-    session.incidentHistory.unshift({ ...incident });
     pushLog(session, `${incident.trainId}: manutenção concluiu a resposta e liberou o trem.`, "info");
+    return;
+  }
+  if (incident.type === "Falha de sinal") {
+    session.network.blockedSegments = session.network.blockedSegments.filter((segment) => segment !== incident.blockedSegment);
+    session.staff.signalAvailable += 1;
+    if (incident.passengerPlanActive) session.staff.passengerGuides += 1;
+    session.missions.signal = true;
+    session.xp += 30;
+    pushLog(session, "Sinal restabelecido: corredor Central–Riverside liberado para retomada gradual.", "info");
   }
 }
 
