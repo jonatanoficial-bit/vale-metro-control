@@ -3,11 +3,13 @@ import {
   createInitialSession,
   formatTime,
   getAllTrains,
+  getActiveIncidents,
   getStation,
   getStatusText,
   getTrainPosition,
   getTrainTarget,
   getVisibleTrains,
+  normalizeSession,
   stationBlueprint,
   tickSession
 } from "./simulation.js";
@@ -32,7 +34,8 @@ const els = {
   eventLog: document.querySelector("#event-log"),
   live: document.querySelector("#live-region"),
   portrait: document.querySelector("#portrait-notice"),
-  continueMessage: document.querySelector("#continue-message")
+  continueMessage: document.querySelector("#continue-message"),
+  resumeSaved: document.querySelector("#resume-saved")
 };
 
 let session;
@@ -45,7 +48,10 @@ const canvasContext = els.canvas.getContext("2d");
 
 async function init() {
   const saved = await saveStore.load();
-  if (saved) els.continueMessage.hidden = false;
+  if (saved) {
+    els.continueMessage.hidden = false;
+    els.resumeSaved.hidden = false;
+  }
   document.querySelectorAll("[data-start]").forEach((button) => {
     button.addEventListener("click", () => startGame(button.dataset.start));
   });
@@ -53,6 +59,7 @@ async function init() {
     button.addEventListener("click", () => setTimeScale(Number(button.dataset.time)));
   });
   els.dispatchReserve.addEventListener("click", () => runCommand({ type: "DISPATCH_RESERVE" }));
+  els.resumeSaved.addEventListener("click", continueSavedSession);
   document.querySelector("#continue-session").addEventListener("click", continueSavedSession);
   els.canvas.addEventListener("click", selectFromMap);
   window.addEventListener("resize", renderMap);
@@ -60,8 +67,7 @@ async function init() {
 }
 
 async function startGame(mode) {
-  const saved = await saveStore.load();
-  session = saved && saved.mode === mode ? saved : createInitialSession(mode);
+  session = createInitialSession(mode);
   selected = { type: "station", id: session.metrics.criticalStationId };
   els.landing.hidden = true;
   els.game.hidden = false;
@@ -82,7 +88,7 @@ async function continueSavedSession() {
     announce("Ainda não existe um turno salvo.");
     return;
   }
-  session = saved;
+  session = normalizeSession(saved);
   selected = { type: "station", id: session.metrics.criticalStationId };
   els.landing.hidden = true;
   els.game.hidden = false;
@@ -123,8 +129,9 @@ function render() {
   els.queue.textContent = `${critical.name} · ${critical.queue}`;
   els.balance.textContent = formatCurrency(session.balanceCents);
   els.xp.textContent = `${session.xp} XP`;
-  els.lineStatus.textContent = session.incidents.length ? "ATENÇÃO" : "EM OPERAÇÃO";
-  els.lineStatus.className = `status-pill ${session.incidents.length ? "warning" : "good"}`;
+  const activeIncidents = getActiveIncidents(session);
+  els.lineStatus.textContent = activeIncidents.length ? "ATENÇÃO" : "EM OPERAÇÃO";
+  els.lineStatus.className = `status-pill ${activeIncidents.length ? "warning" : "good"}`;
   renderTrains();
   renderContext();
   renderMission();
@@ -136,7 +143,7 @@ function render() {
 function renderTrains() {
   els.trainList.innerHTML = getAllTrains(session).map((train) => {
     const selectedClass = selected?.type === "train" && selected.id === train.id ? " selected" : "";
-    const warning = ["HELD", "WAITING_SIGNAL", "DISPATCHING"].includes(train.status) ? " warning" : "";
+    const warning = ["HELD", "WAITING_SIGNAL", "DISPATCHING"].includes(train.status) || train.faultActive ? " warning" : "";
     const occupancy = train.visible ? `${Math.round(train.occupancy / train.capacity * 100)}%` : "Pronto";
     return `<button class="train-row${selectedClass}" data-select-train="${train.id}">
       <i class="train-indicator${warning}"></i>
@@ -163,15 +170,19 @@ function renderContext() {
     if (!train) return;
     const next = getStation(session, getTrainTarget(train));
     const canHold = train.visible && !["HELD", "DEPOT_READY", "DISPATCHING"].includes(train.status);
-    els.context.innerHTML = `<div class="panel-heading"><div><p class="eyebrow">TREM SELECIONADO</p><h2>${train.id}</h2></div><span class="status-pill ${train.status === "HELD" ? "warning" : "good"}">${getStatusText(train.status)}</span></div>
+    const incident = getActiveIncidents(session).find((item) => item.trainId === train.id);
+    const incidentStatus = incident?.status === "responding" ? `Equipe a caminho · ${incident.responseRemaining}s` : "Falha de porta ativa";
+    els.context.innerHTML = `<div class="panel-heading"><div><p class="eyebrow">TREM SELECIONADO</p><h2>${train.id}</h2></div><span class="status-pill ${train.status === "HELD" || incident ? "warning" : "good"}">${incident ? incidentStatus : getStatusText(train.status)}</span></div>
       <p class="context-copy">O comando é validado pelo motor e seus efeitos aparecem no mapa, na fila e no registro.</p>
       <ul class="key-value">
         <li><span>Próxima estação</span><strong>${next.name}</strong></li>
         <li><span>Ocupação</span><strong>${train.occupancy} / ${train.capacity}</strong></li>
         <li><span>Atraso</span><strong>+${train.delaySec}s</strong></li>
         <li><span>Intervalo</span><strong>${session.metrics.onTime >= 93 ? "regular" : "sob pressão"}</strong></li>
+        ${incident ? `<li><span>Ocorrência</span><strong>${incident.type}</strong></li>` : ""}
       </ul>
       <div class="action-stack">
+        ${incident ? `<button class="button danger" data-command="maintenance" data-incident="${incident.id}" ${incident.status === "responding" ? "disabled" : ""}>${incident.status === "responding" ? "Equipe em resposta" : "Enviar manutenção"}</button>` : ""}
         ${train.status === "HELD"
           ? `<button class="button primary" data-command="release" data-train="${train.id}">Liberar trem</button>`
           : `<button class="button warn" data-command="hold" data-train="${train.id}" ${canHold ? "" : "disabled"}>Segurar no próximo ponto</button>`}
@@ -201,6 +212,7 @@ function renderContext() {
       if (command === "release") runCommand({ type: "RELEASE_TRAIN", trainId: train });
       if (command === "reserve") runCommand({ type: "DISPATCH_RESERVE" });
       if (command === "observe") runCommand({ type: "OBSERVE_NETWORK" });
+      if (command === "maintenance") runCommand({ type: "ASSIGN_MAINTENANCE", incidentId: button.dataset.incident });
     });
   });
   els.context.querySelector("[data-focus]")?.addEventListener("click", () => {
@@ -213,17 +225,24 @@ function renderMission() {
   const missions = [
     [session.missions.observe, "Selecione um trem ou analise a rede"],
     [session.missions.hold, "Regule o intervalo com uma retenção"],
-    [session.missions.reserve, "Envie o trem reserva para aliviar a demanda"]
+    [session.missions.reserve, "Envie o trem reserva para aliviar a demanda"],
+    [session.missions.maintenance, "Coordene a resposta a uma falha leve"]
   ];
   els.missionList.innerHTML = missions.map(([done, text]) => `<li class="${done ? "done" : ""}">${text}</li>`).join("");
 }
 
 function renderAlerts() {
-  const incident = session.incidents[0];
+  const incident = getActiveIncidents(session).find((item) => item.type === "Falha de porta") || getActiveIncidents(session)[0];
   const critical = getStation(session, session.metrics.criticalStationId);
   if (incident) {
-    els.alertTitle.textContent = `Fila elevada em ${critical.name}`;
-    els.alertDescription.textContent = `${critical.queue} passageiros aguardam para uma capacidade de ${critical.capacity}. Considere reforçar a oferta.`;
+    if (incident.type === "Falha de porta") {
+      const response = incident.status === "responding" ? `Equipe em resposta: ${incident.responseRemaining}s restantes.` : "Selecione o trem e envie a equipe de manutenção.";
+      els.alertTitle.textContent = `${incident.type} — ${incident.trainId}`;
+      els.alertDescription.textContent = `A composição terá permanência adicional em plataforma. ${response}`;
+    } else {
+      els.alertTitle.textContent = `Fila elevada em ${critical.name}`;
+      els.alertDescription.textContent = `${critical.queue} passageiros aguardam para uma capacidade de ${critical.capacity}. Considere reforçar a oferta.`;
+    }
     els.alertSeverity.textContent = "ATENÇÃO";
     els.alertSeverity.className = "status-pill warning";
   } else {

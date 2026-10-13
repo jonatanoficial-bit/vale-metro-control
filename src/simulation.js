@@ -26,7 +26,7 @@ const statusText = {
 
 export function createInitialSession(mode = "career") {
   const session = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     mode,
     time: 6 * 3600,
     timeScale: 1,
@@ -57,14 +57,29 @@ export function createInitialSession(mode = "career") {
       visible: false,
       holdRequested: false
     },
-    missions: { observe: false, hold: false, reserve: false },
+    missions: { observe: false, hold: false, reserve: false, maintenance: false },
     incidents: [],
+    incidentHistory: [],
+    staff: { maintenanceAvailable: 1 },
+    scenario: { doorFaultAt: 6 * 3600 + 180, doorFaultTriggered: false },
     log: [],
     commandIds: [],
     metrics: { totalQueue: 0, criticalStationId: "riverside", onTime: 100, activeTrains: 4 }
   };
   pushLog(session, "Turno iniciado. Rede em operação às 06:00.", "info");
   recalculate(session);
+  return normalizeSession(session);
+}
+
+export function normalizeSession(session) {
+  session.schemaVersion = 2;
+  session.missions = { observe: false, hold: false, reserve: false, maintenance: false, ...session.missions };
+  session.incidents ??= [];
+  session.incidentHistory ??= [];
+  session.staff ??= { maintenanceAvailable: 1 };
+  session.scenario ??= { doorFaultAt: 6 * 3600 + 180, doorFaultTriggered: false };
+  session.commandIds ??= [];
+  getAllTrains(session).forEach((train) => { train.faultActive ??= false; });
   return session;
 }
 
@@ -83,6 +98,10 @@ export function getAllTrains(session) {
 
 export function getVisibleTrains(session) {
   return getAllTrains(session).filter((train) => train.visible);
+}
+
+export function getActiveIncidents(session) {
+  return session.incidents.filter((incident) => incident.status !== "resolved");
 }
 
 export function getTrainTarget(train) {
@@ -108,6 +127,7 @@ export function getTrainPosition(session, train) {
 }
 
 export function applyCommand(session, command) {
+  normalizeSession(session);
   if (command.id && session.commandIds.includes(command.id)) {
     return reject("Essa ordem já foi processada.");
   }
@@ -121,6 +141,9 @@ export function applyCommand(session, command) {
       break;
     case "DISPATCH_RESERVE":
       result = dispatchReserve(session);
+      break;
+    case "ASSIGN_MAINTENANCE":
+      result = assignMaintenance(session, command.incidentId);
       break;
     case "OBSERVE_NETWORK":
       session.missions.observe = true;
@@ -174,13 +197,30 @@ function dispatchReserve(session) {
   return accept("Trem reserva em preparação; entrada estimada em 24 s de simulação.", { projectedCost: cost });
 }
 
+function assignMaintenance(session, incidentId) {
+  const incident = getActiveIncidents(session).find((item) => item.id === incidentId);
+  const cost = 1_600_00;
+  if (!incident) return reject("Não há uma ocorrência ativa para essa ordem.");
+  if (incident.status === "responding") return reject("Uma equipe já está respondendo a essa ocorrência.");
+  if (session.staff.maintenanceAvailable < 1) return reject("A equipe de manutenção já está ocupada.");
+  if (session.balanceCents < cost) return reject("Saldo insuficiente para mobilizar manutenção.");
+  session.staff.maintenanceAvailable -= 1;
+  session.balanceCents -= cost;
+  session.operatingCostCents += cost;
+  incident.status = "responding";
+  incident.responseRemaining = 16;
+  pushLog(session, `Manutenção mobilizada para ${incident.trainId}. Resposta estimada em 16 s de simulação.`, "info");
+  return accept(`Equipe enviada para ${incident.trainId}; custo operacional registrado.`, { projectedCost: cost });
+}
+
 export function tickSession(session, seconds = 1) {
+  normalizeSession(session);
   for (let tick = 0; tick < seconds; tick += 1) {
     session.time += 1;
     addPassengerDemand(session);
     getVisibleTrains(session).forEach((train) => advanceTrain(session, train));
     session.operatingCostCents += 210;
-    maybeUpdateIncident(session);
+    updateIncidents(session);
     recalculate(session);
   }
   return session;
@@ -217,6 +257,10 @@ function advanceTrain(session, train) {
     return;
   }
   if (train.status === "DWELLING") {
+    if (train.faultActive) {
+      train.delaySec += 1;
+      return;
+    }
     train.dwellRemaining -= 1;
     if (train.dwellRemaining <= 0) {
       if (segmentOccupied(session, train, train.segmentIndex)) {
@@ -263,15 +307,61 @@ function segmentOccupied(session, currentTrain, segmentIndex) {
   });
 }
 
-function maybeUpdateIncident(session) {
+function updateIncidents(session) {
+  triggerDoorFault(session);
+  progressIncidentResponses(session);
+  updateCrowdingIncident(session);
+}
+
+function triggerDoorFault(session) {
+  if (session.scenario.doorFaultTriggered || session.time < session.scenario.doorFaultAt) return;
+  const train = session.trains.find((item) => item.id === "VM-103");
+  if (!train) return;
+  session.scenario.doorFaultTriggered = true;
+  train.faultActive = true;
+  train.delaySec += 24;
+  session.incidents.push({
+    id: "door-fault",
+    type: "Falha de porta",
+    severity: "warning",
+    trainId: train.id,
+    status: "active",
+    startedAt: session.time
+  });
+  pushLog(session, `Ocorrência: ${train.id} reporta falha de porta. Manutenção recomendada.`, "warning");
+}
+
+function progressIncidentResponses(session) {
+  for (const incident of getActiveIncidents(session)) {
+    if (incident.status !== "responding") continue;
+    incident.responseRemaining -= 1;
+    if (incident.responseRemaining > 0) continue;
+    incident.status = "resolved";
+    incident.resolvedAt = session.time;
+    const train = getAllTrains(session).find((item) => item.id === incident.trainId);
+    if (train) {
+      train.faultActive = false;
+      train.dwellRemaining = Math.max(2, train.dwellRemaining ?? 0);
+    }
+    session.staff.maintenanceAvailable += 1;
+    session.missions.maintenance = true;
+    session.xp += 18;
+    session.incidentHistory.unshift({ ...incident });
+    pushLog(session, `${incident.trainId}: manutenção concluiu a resposta e liberou o trem.`, "info");
+  }
+}
+
+function updateCrowdingIncident(session) {
   const critical = session.stations.reduce((highest, station) => (station.queue > highest.queue ? station : highest));
-  const existing = session.incidents.find((incident) => incident.id === "crowding");
+  const existing = getActiveIncidents(session).find((incident) => incident.id === "crowding");
   if (critical.queue >= critical.capacity && !existing) {
-    session.incidents.push({ id: "crowding", stationId: critical.id, severity: "warning", startedAt: session.time });
+    session.incidents.push({ id: "crowding", type: "Fila elevada", stationId: critical.id, severity: "warning", status: "active", startedAt: session.time });
     pushLog(session, `Alerta: fila elevada em ${critical.name}. Reforço de oferta recomendado.`, "warning");
   }
   if (existing && critical.queue < critical.capacity * 0.78) {
-    session.incidents = session.incidents.filter((incident) => incident.id !== "crowding");
+    existing.status = "resolved";
+    existing.resolvedAt = session.time;
+    session.incidentHistory.unshift({ ...existing });
     session.xp += 8;
     pushLog(session, `Alerta encerrado: ${critical.name} voltou a um nível administrável.`, "info");
   }

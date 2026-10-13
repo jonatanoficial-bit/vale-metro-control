@@ -8,6 +8,7 @@ Protótipo jogável do simulador operacional de metrôs **Vale Metro Control**. 
 - Simulação determinística de movimento, capacidade, embarque, filas e receita.
 - Pausa e velocidades 1×, 2× e 4×.
 - Ordem validada de retenção/liberação de trem e despacho de reserva com custo real.
+- Ocorrência leve de porta com manutenção, custo, tempo de resposta e consequências no turno.
 - Alerta dinâmico de lotação, registro de eventos e tutorial inicial por objetivos.
 - Pontualidade, fila crítica, saldo e XP calculados a partir do estado da sessão.
 - Salvamento local com IndexedDB e fallback de navegador.

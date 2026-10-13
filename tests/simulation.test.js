@@ -39,3 +39,27 @@ test("a simulação é determinística para a mesma sequência de comandos", () 
   assert.deepEqual(a.metrics, b.metrics);
   assert.deepEqual(a.stations.map((station) => station.queue), b.stations.map((station) => station.queue));
 });
+
+test("uma falha leve exige manutenção e só é encerrada após o tempo de resposta", () => {
+  const session = createInitialSession();
+  tickSession(session, 180);
+  const incident = session.incidents.find((item) => item.id === "door-fault");
+  assert.equal(incident.status, "active");
+  assert.equal(session.trains.find((train) => train.id === "VM-103").faultActive, true);
+  const result = applyCommand(session, { id: "maintenance-1", type: "ASSIGN_MAINTENANCE", incidentId: "door-fault" });
+  assert.equal(result.accepted, true);
+  assert.equal(incident.status, "responding");
+  tickSession(session, 16);
+  assert.equal(incident.status, "resolved");
+  assert.equal(session.missions.maintenance, true);
+  assert.equal(session.staff.maintenanceAvailable, 1);
+});
+
+test("manutenção não pode ser mobilizada duas vezes para a mesma ocorrência", () => {
+  const session = createInitialSession();
+  tickSession(session, 180);
+  const first = applyCommand(session, { id: "maintenance-1", type: "ASSIGN_MAINTENANCE", incidentId: "door-fault" });
+  const second = applyCommand(session, { id: "maintenance-2", type: "ASSIGN_MAINTENANCE", incidentId: "door-fault" });
+  assert.equal(first.accepted, true);
+  assert.equal(second.accepted, false);
+});
