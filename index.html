@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#061526" />
+    <meta name="description" content="Vale Metro Control - protótipo de simulador operacional de metrôs." />
+    <title>Vale Metro Control</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main id="app" class="app-shell">
+      <section id="landing-screen" class="landing-screen" aria-labelledby="game-title">
+        <div class="landing-visual" aria-hidden="true"></div>
+        <div class="landing-content">
+          <img class="landing-logo" src="./assets/vale-metro-control-logo.png" alt="Vale Metro Control" />
+          <p class="eyebrow">PROTÓTIPO OPERACIONAL · BUILD 0.1.0</p>
+          <h1 id="game-title">A cidade está em movimento.</h1>
+          <p class="landing-copy">
+            Coordene a Linha Vale, responda a uma demanda crescente em Riverside e mantenha o serviço seguro.
+          </p>
+          <div class="landing-actions">
+            <button class="button primary" data-start="career">Iniciar carreira</button>
+            <button class="button secondary" data-start="sandbox">Abrir sandbox</button>
+          </div>
+          <p id="continue-message" class="landing-hint" hidden>
+            Um turno salvo foi encontrado. Escolha um modo para iniciar uma nova sessão ou use Continuar dentro do jogo.
+          </p>
+        </div>
+      </section>
+
+      <section id="game-screen" class="game-screen" hidden aria-label="Central operacional Vale Metro">
+        <header class="topbar">
+          <div class="brand-lockup">
+            <img src="./assets/vale-metro-control-logo.png" alt="" />
+            <div>
+              <p class="eyebrow">CENTRAL OPERACIONAL</p>
+              <strong>Vale Central</strong>
+            </div>
+          </div>
+          <dl class="vitals" aria-label="Indicadores da rede">
+            <div><dt>Horário</dt><dd id="clock-value">06:00</dd></div>
+            <div><dt>Pontualidade</dt><dd id="punctuality-value">--</dd></div>
+            <div><dt>Fila crítica</dt><dd id="queue-value">--</dd></div>
+            <div><dt>Saldo</dt><dd id="balance-value">--</dd></div>
+          </dl>
+          <div class="time-controls" aria-label="Controles de tempo">
+            <button class="icon-button" data-time="0" aria-label="Pausar simulação" title="Pausar (espaço)">Ⅱ</button>
+            <button class="time-button active" data-time="1">1×</button>
+            <button class="time-button" data-time="2">2×</button>
+            <button class="time-button" data-time="4">4×</button>
+          </div>
+        </header>
+
+        <div class="workspace">
+          <aside class="left-rail panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">OPERAÇÃO</p>
+                <h2>Linha Vale</h2>
+              </div>
+              <span class="status-pill good" id="line-status">EM OPERAÇÃO</span>
+            </div>
+            <p class="rail-summary">Uma linha, cinco estações, quatro composições e uma reserva no pátio.</p>
+            <div id="train-list" class="train-list" aria-label="Lista de trens"></div>
+            <button id="dispatch-reserve" class="button primary full-width">Enviar trem reserva</button>
+            <p class="microcopy">R$ 4.800 · requer trem e janela de despacho disponíveis</p>
+          </aside>
+
+          <section class="map-panel panel" aria-label="Mapa interativo da rede">
+            <div class="map-heading">
+              <div>
+                <p class="eyebrow">MAPA AO VIVO</p>
+                <h2>Corredor Vale Norte - Porto Azul</h2>
+              </div>
+              <div class="legend" aria-label="Legenda do mapa">
+                <span><i class="legend-dot train"></i>Trem</span>
+                <span><i class="legend-dot station"></i>Estação</span>
+                <span><i class="legend-dot warning"></i>Risco</span>
+              </div>
+            </div>
+            <canvas id="network-canvas" aria-label="Mapa da linha Vale com estações e trens selecionáveis"></canvas>
+            <p class="map-caption">Clique em um trem ou estação para abrir o painel de contexto.</p>
+          </section>
+
+          <aside id="context-panel" class="context-panel panel" aria-live="polite"></aside>
+        </div>
+
+        <footer class="bottom-dock">
+          <section class="mission-card panel">
+            <div class="panel-heading compact">
+              <div>
+                <p class="eyebrow">TUTORIAL</p>
+                <h2 id="mission-title">Primeiro turno</h2>
+              </div>
+              <span id="xp-value" class="xp">0 XP</span>
+            </div>
+            <ol id="mission-list" class="mission-list"></ol>
+          </section>
+          <section class="alert-card panel">
+            <div class="panel-heading compact">
+              <div>
+                <p class="eyebrow">CENTRAL DE ALERTAS</p>
+                <h2 id="alert-title">Rede estabilizando</h2>
+              </div>
+              <span id="alert-severity" class="status-pill good">NORMAL</span>
+            </div>
+            <p id="alert-description">As filas e os intervalos são atualizados a cada segundo de simulação.</p>
+          </section>
+          <section class="events-card panel">
+            <div class="panel-heading compact">
+              <div>
+                <p class="eyebrow">REGISTRO OPERACIONAL</p>
+                <h2>Últimos eventos</h2>
+              </div>
+              <button id="continue-session" class="text-button">Continuar</button>
+            </div>
+            <ul id="event-log" class="event-log" aria-label="Eventos recentes"></ul>
+          </section>
+        </footer>
+      </section>
+
+      <div id="portrait-notice" class="portrait-notice" hidden>
+        <img src="./assets/vale-metro-control-logo.png" alt="Vale Metro Control" />
+        <p>Gire seu dispositivo para usar a central em modo horizontal.</p>
+      </div>
+      <p id="live-region" class="sr-only" aria-live="assertive"></p>
+    </main>
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>
