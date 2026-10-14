@@ -1,5 +1,6 @@
 import {
   applyCommand,
+  cityProfiles,
   createInitialSession,
   formatTime,
   getAllTrains,
@@ -10,18 +11,24 @@ import {
   getTrainTarget,
   getVisibleTrains,
   normalizeSession,
-  stationBlueprint,
   tickSession
 } from "./simulation.js";
 
 const els = {
   landing: document.querySelector("#landing-screen"),
+  citySelection: document.querySelector("#city-selection"),
+  cityOptions: document.querySelector("#city-options"),
+  backToLanding: document.querySelector("#back-to-landing"),
   game: document.querySelector("#game-screen"),
   canvas: document.querySelector("#network-canvas"),
   clock: document.querySelector("#clock-value"),
   punctuality: document.querySelector("#punctuality-value"),
   queue: document.querySelector("#queue-value"),
   balance: document.querySelector("#balance-value"),
+  career: document.querySelector("#career-value"),
+  cityName: document.querySelector("#city-name"),
+  lineName: document.querySelector("#line-name"),
+  corridorName: document.querySelector("#corridor-name"),
   trainList: document.querySelector("#train-list"),
   context: document.querySelector("#context-panel"),
   lineStatus: document.querySelector("#line-status"),
@@ -33,6 +40,11 @@ const els = {
   alertSeverity: document.querySelector("#alert-severity"),
   alertActions: document.querySelector("#alert-actions"),
   eventLog: document.querySelector("#event-log"),
+  completeTurn: document.querySelector("#complete-turn"),
+  turnSummary: document.querySelector("#turn-summary"),
+  turnSummaryContent: document.querySelector("#turn-summary-content"),
+  nextTurn: document.querySelector("#next-turn"),
+  returnToCities: document.querySelector("#return-to-cities"),
   live: document.querySelector("#live-region"),
   portrait: document.querySelector("#portrait-notice"),
   continueMessage: document.querySelector("#continue-message"),
@@ -44,17 +56,23 @@ let selected = null;
 let simTimer;
 let saveTimer;
 let commandSequence = 0;
+let careerProfiles = {};
 
 const canvasContext = els.canvas.getContext("2d");
 
 async function init() {
-  const saved = await saveStore.load();
+  const [saved, savedCareers] = await Promise.all([saveStore.load(), saveStore.loadCareerProfiles()]);
+  careerProfiles = savedCareers;
+  renderCityOptions();
   if (saved) {
     els.continueMessage.hidden = false;
     els.resumeSaved.hidden = false;
   }
   document.querySelectorAll("[data-start]").forEach((button) => {
-    button.addEventListener("click", () => startGame(button.dataset.start));
+    button.addEventListener("click", () => {
+      if (button.dataset.start === "career") openCitySelection();
+      else startGame("sandbox", "vale-central");
+    });
   });
   document.querySelectorAll("[data-time]").forEach((button) => {
     button.addEventListener("click", () => setTimeScale(Number(button.dataset.time)));
@@ -67,16 +85,64 @@ async function init() {
     if (button.dataset.alertCommand === "passengers") runCommand({ type: "DIRECT_PASSENGERS", incidentId: button.dataset.incident });
   });
   els.resumeSaved.addEventListener("click", continueSavedSession);
-  document.querySelector("#continue-session").addEventListener("click", continueSavedSession);
+  els.backToLanding.addEventListener("click", showLanding);
+  els.completeTurn.addEventListener("click", completeCurrentTurn);
+  els.nextTurn.addEventListener("click", startNextTurn);
+  els.returnToCities.addEventListener("click", () => {
+    els.turnSummary.hidden = true;
+    showLanding();
+    openCitySelection();
+  });
   els.canvas.addEventListener("click", selectFromMap);
   window.addEventListener("resize", renderMap);
   window.addEventListener("keydown", handleKeyboard);
 }
 
-async function startGame(mode) {
-  session = createInitialSession(mode);
+function renderCityOptions() {
+  els.cityOptions.innerHTML = cityProfiles.map((city) => {
+    const career = careerProfiles[city.id];
+    const progress = career
+      ? `Dia ${career.day} · ${career.completedTurns} turno${career.completedTurns === 1 ? "" : "s"} concluído${career.completedTurns === 1 ? "" : "s"}`
+      : "Nova carreira";
+    return `<button class="city-card" data-city="${city.id}">
+      <span class="city-difficulty">${city.difficulty}</span>
+      <strong>${city.name}</strong>
+      <p>${city.description}</p>
+      <small>${city.lineName} · caixa inicial ${formatCurrency(career?.balanceCents ?? city.startingBalanceCents)}</small>
+      <em>${progress}</em>
+    </button>`;
+  }).join("");
+  els.cityOptions.querySelectorAll("[data-city]").forEach((button) => {
+    button.addEventListener("click", () => startCareer(button.dataset.city));
+  });
+}
+
+function openCitySelection() {
+  els.landing.hidden = true;
+  els.citySelection.hidden = false;
+  els.game.hidden = true;
+  els.turnSummary.hidden = true;
+  renderCityOptions();
+}
+
+function showLanding() {
+  window.clearInterval(simTimer);
+  simTimer = undefined;
+  els.citySelection.hidden = true;
+  els.game.hidden = true;
+  els.landing.hidden = false;
+}
+
+async function startCareer(cityId) {
+  await startGame("career", cityId, careerProfiles[cityId] || null);
+}
+
+async function startGame(mode, cityId = "vale-central", careerProfile = null) {
+  session = createInitialSession(mode, cityId, careerProfile);
   selected = { type: "station", id: session.metrics.criticalStationId };
   els.landing.hidden = true;
+  els.citySelection.hidden = true;
+  els.turnSummary.hidden = true;
   els.game.hidden = false;
   setTimeScale(session.timeScale || 1);
   render();
@@ -98,6 +164,8 @@ async function continueSavedSession() {
   session = normalizeSession(saved);
   selected = { type: "station", id: session.metrics.criticalStationId };
   els.landing.hidden = true;
+  els.citySelection.hidden = true;
+  els.turnSummary.hidden = true;
   els.game.hidden = false;
   setTimeScale(session.timeScale || 1);
   render();
@@ -110,7 +178,7 @@ async function continueSavedSession() {
 }
 
 function setTimeScale(scale) {
-  if (!session) return;
+  if (!session || session.turn?.status === "complete") return;
   session.timeScale = scale;
   document.querySelectorAll("[data-time]").forEach((button) => {
     button.classList.toggle("active", Number(button.dataset.time) === scale);
@@ -128,6 +196,39 @@ function runCommand(command) {
   scheduleSave();
 }
 
+async function completeCurrentTurn() {
+  if (!session) return;
+  const result = applyCommand(session, { id: `cmd-${session.time}-${commandSequence++}`, type: "COMPLETE_TURN" });
+  announce(result.message);
+  if (result.accepted) {
+    const nextProfile = {
+      ...session.career,
+      day: session.career.day + 1,
+      balanceCents: session.balanceCents,
+      reputation: session.reputation,
+      totalXp: session.career.totalXp,
+      completedTurns: session.career.completedTurns,
+      completedProjectIds: session.career.completedProjectIds
+    };
+    careerProfiles[session.cityId] = nextProfile;
+    await saveStore.saveCareerProfiles(careerProfiles);
+    renderTurnSummary(result.summary);
+  }
+  render();
+  scheduleSave();
+}
+
+function renderTurnSummary(summary) {
+  els.turnSummaryContent.innerHTML = `<div class="turn-grade"><b>${summary.grade}</b><div><strong>${summary.score}% de desempenho operacional</strong><p>${summary.onTime}% de pontualidade · ${summary.incidentsOpen} ocorrência${summary.incidentsOpen === 1 ? "" : "s"} em aberto</p><p>Recompensa: ${formatCurrency(summary.rewardCents)} · +${summary.xpReward} XP de desempenho</p></div></div>`;
+  els.turnSummary.hidden = false;
+}
+
+async function startNextTurn() {
+  if (!session?.career) return;
+  const cityId = session.cityId;
+  await startGame("career", cityId, careerProfiles[cityId]);
+}
+
 function render() {
   if (!session) return;
   const critical = getStation(session, session.metrics.criticalStationId);
@@ -136,6 +237,17 @@ function render() {
   els.queue.textContent = `${critical.name} · ${critical.queue}`;
   els.balance.textContent = formatCurrency(session.balanceCents);
   els.xp.textContent = `${session.xp} XP`;
+  els.cityName.textContent = session.city;
+  els.lineName.textContent = session.lineName;
+  els.corridorName.textContent = `Corredor ${session.corridor}`;
+  els.career.textContent = session.mode === "career" ? `Dia ${session.career.day}` : "Sandbox";
+  const remainingTurnTime = Math.max(0, session.turn.minimumDuration - (session.time - session.turn.startedAt));
+  els.completeTurn.disabled = session.mode !== "career" || session.turn.status === "complete";
+  els.completeTurn.textContent = session.turn.status === "complete"
+    ? "Turno concluído"
+    : remainingTurnTime > 0
+      ? `Encerrar em ${remainingTurnTime}s`
+      : "Encerrar turno";
   const activeIncidents = getActiveIncidents(session);
   const emergency = activeIncidents.some((incident) => incident.severity === "critical");
   els.lineStatus.textContent = emergency ? "EMERGÊNCIA" : activeIncidents.length ? "ATENÇÃO" : "EM OPERAÇÃO";
@@ -198,8 +310,14 @@ function renderContext() {
       </div>`;
   } else {
     const station = getStation(session, selected.id);
+    const project = Object.values(session.projects).find((item) => item.stationId === station.id);
     const pressure = Math.round(station.queue / station.capacity * 100);
     const risky = pressure >= 100;
+    const projectCopy = project?.status === "available"
+      ? `Pronta · +${project.capacityGain} de capacidade`
+      : project?.status === "building"
+        ? `Obra em andamento · ${project.constructionRemaining}s`
+        : `Concluída · +${project.capacityGain} de capacidade`;
     els.context.innerHTML = `<div class="panel-heading"><div><p class="eyebrow">ESTAÇÃO SELECIONADA</p><h2>${station.name}</h2></div><span class="status-pill ${risky ? "warning" : "good"}">${pressure}% DA CAPACIDADE</span></div>
       <p class="context-copy">Demanda, embarques e lotação são calculados durante o turno.</p>
       <ul class="key-value">
@@ -208,7 +326,11 @@ function renderContext() {
         <li><span>Entradas neste turno</span><strong>${station.arrivals}</strong></li>
         <li><span>Embarques neste turno</span><strong>${station.departures}</strong></li>
       </ul>
+      ${project ? `<div class="project-summary"><strong>${project.title}</strong><p>${projectCopy}</p></div>` : ""}
       <div class="action-stack">
+        ${project?.status === "available" ? `<button class="button primary" data-command="expansion" data-project="${project.id}">Aprovar expansão · ${formatCurrency(project.costCents)}</button>` : ""}
+        ${project?.status === "building" ? `<button class="button secondary" disabled>Obra em andamento · ${project.constructionRemaining}s</button>` : ""}
+        ${project?.status === "complete" ? `<button class="button secondary" disabled>Expansão concluída</button>` : ""}
         <button class="button primary" data-command="reserve">Enviar trem reserva</button>
         <button class="button secondary" data-command="observe">Analisar rede</button>
       </div>`;
@@ -221,6 +343,7 @@ function renderContext() {
       if (command === "reserve") runCommand({ type: "DISPATCH_RESERVE" });
       if (command === "observe") runCommand({ type: "OBSERVE_NETWORK" });
       if (command === "maintenance") runCommand({ type: "ASSIGN_MAINTENANCE", incidentId: button.dataset.incident });
+      if (command === "expansion") runCommand({ type: "APPROVE_EXPANSION", projectId: button.dataset.project });
     });
   });
   els.context.querySelector("[data-focus]")?.addEventListener("click", () => {
@@ -236,7 +359,8 @@ function renderMission() {
     [session.missions.reserve, "Envie o trem reserva para aliviar a demanda"],
     [session.missions.maintenance, "Coordene a resposta a uma falha leve"],
     [session.missions.signal, "Isole uma falha de sinal crítica"],
-    [session.missions.passengers, "Direcione passageiros durante uma emergência"]
+    [session.missions.passengers, "Direcione passageiros durante uma emergência"],
+    [session.missions.expansion, "Entregue uma expansão urbana na estação prioritária"]
   ];
   els.missionList.innerHTML = missions.map(([done, text]) => `<li class="${done ? "done" : ""}">${text}</li>`).join("");
 }
@@ -250,7 +374,7 @@ function renderAlerts() {
   if (incident) {
     if (incident.type === "Falha de sinal") {
       const isolating = incident.status === "responding";
-      els.alertTitle.textContent = "Falha de sinal — Central–Riverside";
+      els.alertTitle.textContent = `Falha de sinal — ${getStation(session, "central").name}–${getStation(session, "riverside").name}`;
       els.alertDescription.textContent = isolating
         ? `Centro de sinal em resposta: ${incident.responseRemaining}s restantes. O trecho permanece isolado.`
         : "O corredor foi bloqueado. Isole o sinal e reduza a pressão nas plataformas com agentes de estação.";
@@ -321,7 +445,7 @@ function drawTrack(width, height) {
   canvasContext.lineCap = "round";
   canvasContext.lineJoin = "round";
   canvasContext.beginPath();
-  stationBlueprint.forEach((station, index) => {
+  session.stations.forEach((station, index) => {
     const point = mapPoint(station, width, height);
     if (index === 0) canvasContext.moveTo(point.x, point.y); else canvasContext.lineTo(point.x, point.y);
   });
@@ -335,8 +459,8 @@ function drawTrack(width, height) {
   canvasContext.stroke();
   canvasContext.restore();
   if (session.network.blockedSegments.includes("central:riverside")) {
-    const central = mapPoint(stationBlueprint.find((station) => station.id === "central"), width, height);
-    const riverside = mapPoint(stationBlueprint.find((station) => station.id === "riverside"), width, height);
+    const central = mapPoint(session.stations.find((station) => station.id === "central"), width, height);
+    const riverside = mapPoint(session.stations.find((station) => station.id === "riverside"), width, height);
     canvasContext.save();
     canvasContext.beginPath();
     canvasContext.moveTo(central.x, central.y);
@@ -355,12 +479,13 @@ function drawStations(width, height) {
     const point = mapPoint(station, width, height);
     const selectedStation = selected?.type === "station" && selected.id === station.id;
     const risk = station.queue >= station.capacity;
+    const expanded = station.expansionLevel > 0;
     canvasContext.save();
     canvasContext.beginPath();
     canvasContext.arc(point.x, point.y, selectedStation ? 14 : 10, 0, Math.PI * 2);
-    canvasContext.fillStyle = risk ? "#ffbf45" : "#e6f5ff";
-    canvasContext.shadowBlur = selectedStation || risk ? 20 : 8;
-    canvasContext.shadowColor = risk ? "#ffb013" : "#4edbff";
+    canvasContext.fillStyle = risk ? "#ffbf45" : expanded ? "#50e39a" : "#e6f5ff";
+    canvasContext.shadowBlur = selectedStation || risk || expanded ? 20 : 8;
+    canvasContext.shadowColor = risk ? "#ffb013" : expanded ? "#50e39a" : "#4edbff";
     canvasContext.fill();
     canvasContext.beginPath();
     canvasContext.arc(point.x, point.y, selectedStation ? 7 : 5, 0, Math.PI * 2);
@@ -471,6 +596,30 @@ const saveStore = {
       });
     } catch {
       localStorage.setItem("vale-metro-control-active", JSON.stringify(value));
+    }
+  },
+  async loadCareerProfiles() {
+    try {
+      const db = await this.database();
+      return await new Promise((resolve, reject) => {
+        const request = db.transaction("sessions", "readonly").objectStore("sessions").get("career-profiles");
+        request.onsuccess = () => resolve(request.result || {});
+        request.onerror = () => reject(request.error);
+      });
+    } catch {
+      return JSON.parse(localStorage.getItem("vale-metro-control-careers") || "{}");
+    }
+  },
+  async saveCareerProfiles(value) {
+    try {
+      const db = await this.database();
+      await new Promise((resolve, reject) => {
+        const request = db.transaction("sessions", "readwrite").objectStore("sessions").put(value, "career-profiles");
+        request.onsuccess = resolve;
+        request.onerror = () => reject(request.error);
+      });
+    } catch {
+      localStorage.setItem("vale-metro-control-careers", JSON.stringify(value));
     }
   }
 };

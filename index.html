@@ -14,7 +14,7 @@
         <div class="landing-visual" aria-hidden="true"></div>
         <div class="landing-content">
           <img class="landing-logo" src="./assets/vale-metro-control-logo.png" alt="Vale Metro Control" />
-          <p class="eyebrow">PROTÓTIPO OPERACIONAL · BUILD 0.1.0</p>
+          <p class="eyebrow">PROTÓTIPO OPERACIONAL · BUILD 0.2.0</p>
           <h1 id="game-title">A cidade está em movimento.</h1>
           <p class="landing-copy">
             Coordene a Linha Vale, responda a uma demanda crescente em Riverside e mantenha o serviço seguro.
@@ -30,13 +30,23 @@
         </div>
       </section>
 
+      <section id="city-selection" class="city-selection" hidden aria-labelledby="city-selection-title">
+        <div class="city-selection-panel panel">
+          <p class="eyebrow">MODO CARREIRA</p>
+          <h1 id="city-selection-title">Escolha a cidade que vai mover.</h1>
+          <p class="landing-copy">Cada rede tem caixa, demanda, capacidade e desafios próprios. Seu desempenho permanece salvo entre os turnos.</p>
+          <div id="city-options" class="city-options" aria-label="Cidades disponíveis"></div>
+          <button id="back-to-landing" class="text-button">← Voltar</button>
+        </div>
+      </section>
+
       <section id="game-screen" class="game-screen" hidden aria-label="Central operacional Vale Metro">
         <header class="topbar">
           <div class="brand-lockup">
             <img src="./assets/vale-metro-control-logo.png" alt="" />
             <div>
               <p class="eyebrow">CENTRAL OPERACIONAL</p>
-              <strong>Vale Central</strong>
+              <strong id="city-name">Vale Central</strong>
             </div>
           </div>
           <dl class="vitals" aria-label="Indicadores da rede">
@@ -44,6 +54,7 @@
             <div><dt>Pontualidade</dt><dd id="punctuality-value">--</dd></div>
             <div><dt>Fila crítica</dt><dd id="queue-value">--</dd></div>
             <div><dt>Saldo</dt><dd id="balance-value">--</dd></div>
+            <div><dt>Carreira</dt><dd id="career-value">--</dd></div>
           </dl>
           <div class="time-controls" aria-label="Controles de tempo">
             <button class="icon-button" data-time="0" aria-label="Pausar simulação" title="Pausar (espaço)">Ⅱ</button>
@@ -58,7 +69,7 @@
             <div class="panel-heading">
               <div>
                 <p class="eyebrow">OPERAÇÃO</p>
-                <h2>Linha Vale</h2>
+                <h2 id="line-name">Linha Vale</h2>
               </div>
               <span class="status-pill good" id="line-status">EM OPERAÇÃO</span>
             </div>
@@ -72,7 +83,7 @@
             <div class="map-heading">
               <div>
                 <p class="eyebrow">MAPA AO VIVO</p>
-                <h2>Corredor Vale Norte - Porto Azul</h2>
+                <h2 id="corridor-name">Corredor Vale Norte - Porto Azul</h2>
               </div>
               <div class="legend" aria-label="Legenda do mapa">
                 <span><i class="legend-dot train"></i>Trem</span>
@@ -115,11 +126,23 @@
                 <p class="eyebrow">REGISTRO OPERACIONAL</p>
                 <h2>Últimos eventos</h2>
               </div>
-              <button id="continue-session" class="text-button">Continuar</button>
+              <button id="complete-turn" class="text-button">Encerrar turno</button>
             </div>
             <ul id="event-log" class="event-log" aria-label="Eventos recentes"></ul>
           </section>
         </footer>
+      </section>
+
+      <section id="turn-summary" class="turn-summary" hidden aria-modal="true" role="dialog" aria-labelledby="turn-summary-title">
+        <div class="turn-summary-card panel">
+          <p class="eyebrow">RELATÓRIO DE TURNO</p>
+          <h1 id="turn-summary-title">Turno concluído</h1>
+          <div id="turn-summary-content"></div>
+          <div class="turn-summary-actions">
+            <button id="next-turn" class="button primary">Iniciar próximo dia</button>
+            <button id="return-to-cities" class="button secondary">Escolher outra cidade</button>
+          </div>
+        </div>
       </section>
 
       <div id="portrait-notice" class="portrait-notice" hidden>

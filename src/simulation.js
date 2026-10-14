@@ -1,5 +1,47 @@
 const route = ["depot", "norte", "central", "riverside", "porto"];
 
+export const cityProfiles = [
+  {
+    id: "vale-central",
+    name: "Vale Central",
+    lineName: "Linha Vale",
+    corridor: "Vale Norte — Porto Azul",
+    description: "Rede equilibrada, indicada para construir a primeira carreira.",
+    difficulty: "Operação moderada",
+    startingBalanceCents: 128_400_00,
+    demandMultiplier: 1,
+    capacityMultiplier: 1,
+    queueMultiplier: 1,
+    stationNames: ["Pátio Vale", "Vale Norte", "Central", "Riverside", "Porto Azul"]
+  },
+  {
+    id: "porto-dourado",
+    name: "Porto Dourado",
+    lineName: "Linha da Marina",
+    corridor: "Estaleiro — Terminal Oceano",
+    description: "Cidade portuária de alto fluxo: mais receita, pressão maior nos picos.",
+    difficulty: "Demanda intensa",
+    startingBalanceCents: 154_000_00,
+    demandMultiplier: 1.18,
+    capacityMultiplier: 0.94,
+    queueMultiplier: 1.16,
+    stationNames: ["Pátio Marina", "Estaleiro", "Mercado Velho", "Distrito do Porto", "Terminal Oceano"]
+  },
+  {
+    id: "serra-clara",
+    name: "Serra Clara",
+    lineName: "Linha das Serras",
+    corridor: "Parque Alto — Vale do Sol",
+    description: "Corredor residencial com orçamento menor e necessidade de regularidade.",
+    difficulty: "Orçamento restrito",
+    startingBalanceCents: 102_000_00,
+    demandMultiplier: 0.86,
+    capacityMultiplier: 1.08,
+    queueMultiplier: 0.82,
+    stationNames: ["Pátio da Serra", "Parque Alto", "Centro Cívico", "Hospital Regional", "Vale do Sol"]
+  }
+];
+
 export const stationBlueprint = [
   { id: "depot", name: "Pátio Vale", x: 0.10, y: 0.70, capacity: 75, demand: 0.18, queue: 8 },
   { id: "norte", name: "Vale Norte", x: 0.28, y: 0.30, capacity: 115, demand: 0.58, queue: 32 },
@@ -24,23 +66,37 @@ const statusText = {
   WAITING_SIGNAL: "Aguardando via"
 };
 
-export function createInitialSession(mode = "career") {
+export function createInitialSession(mode = "career", cityId = "vale-central", careerProfile = null) {
+  const city = getCityProfile(cityId);
+  const balanceCents = mode === "sandbox" ? 999_999_00 : careerProfile?.balanceCents ?? city.startingBalanceCents;
+  const stations = createCityStations(city);
+  const projects = { riversideExpansion: createRiversideExpansionProject(city.stationNames[3]) };
+  const completedProjectIds = careerProfile?.completedProjectIds ?? [];
+  if (mode === "career" && completedProjectIds.includes(projects.riversideExpansion.id)) {
+    projects.riversideExpansion.status = "complete";
+    const station = stations.find((item) => item.id === projects.riversideExpansion.stationId);
+    if (station) station.capacity += projects.riversideExpansion.capacityGain;
+  }
   const session = {
-    schemaVersion: 3,
+    schemaVersion: 5,
     mode,
     time: 6 * 3600,
     timeScale: 1,
-    city: "Vale Central",
-    balanceCents: mode === "sandbox" ? 999_999_00 : 128_400_00,
+    city: city.name,
+    cityId: city.id,
+    lineName: city.lineName,
+    corridor: city.corridor,
+    balanceCents,
     revenueCents: 0,
     operatingCostCents: 0,
-    reputation: 76,
+    reputation: careerProfile?.reputation ?? 76,
     xp: 0,
-    stations: stationBlueprint.map((station) => ({ ...station, arrivals: 0, departures: 0 })),
+    stations,
     trains: trainBlueprint.map((train) => ({
       ...train,
       route: [...route],
       capacity: 180,
+      delaySec: train.delaySec + (city.id === "porto-dourado" ? 4 : city.id === "serra-clara" ? 1 : 0),
       holdRequested: false,
       visible: true
     })),
@@ -57,7 +113,7 @@ export function createInitialSession(mode = "career") {
       visible: false,
       holdRequested: false
     },
-    missions: { observe: false, hold: false, reserve: false, maintenance: false, signal: false, passengers: false },
+    missions: { observe: false, hold: false, reserve: false, maintenance: false, signal: false, passengers: false, expansion: false },
     incidents: [],
     incidentHistory: [],
     staff: { maintenanceAvailable: 1, signalAvailable: 1, passengerGuides: 2 },
@@ -69,18 +125,38 @@ export function createInitialSession(mode = "career") {
     },
     network: { blockedSegments: [] },
     passengerTransfers: 0,
+    projects,
+    career: mode === "career" ? {
+      cityId: city.id,
+      day: careerProfile?.day ?? 1,
+      totalXp: careerProfile?.totalXp ?? 0,
+      completedTurns: careerProfile?.completedTurns ?? 0,
+      completedProjectIds,
+      balanceCents
+    } : null,
+    turn: {
+      status: "active",
+      startedAt: 6 * 3600,
+      minimumDuration: 300,
+      summary: null
+    },
     log: [],
     commandIds: [],
     metrics: { totalQueue: 0, criticalStationId: "riverside", onTime: 100, activeTrains: 4 }
   };
-  pushLog(session, "Turno iniciado. Rede em operação às 06:00.", "info");
+  pushLog(session, `${mode === "career" ? `Dia ${session.career.day} da carreira em ${city.name}` : "Sandbox"}: rede em operação às 06:00.`, "info");
   recalculate(session);
   return normalizeSession(session);
 }
 
 export function normalizeSession(session) {
-  session.schemaVersion = 3;
-  session.missions = { observe: false, hold: false, reserve: false, maintenance: false, signal: false, passengers: false, ...session.missions };
+  const city = getCityProfile(session.cityId || "vale-central");
+  session.schemaVersion = 5;
+  session.cityId ??= city.id;
+  session.city ??= city.name;
+  session.lineName ??= city.lineName;
+  session.corridor ??= city.corridor;
+  session.missions = { observe: false, hold: false, reserve: false, maintenance: false, signal: false, passengers: false, expansion: false, ...session.missions };
   session.incidents ??= [];
   session.incidentHistory ??= [];
   session.staff = { maintenanceAvailable: 1, signalAvailable: 1, passengerGuides: 2, ...session.staff };
@@ -93,9 +169,52 @@ export function normalizeSession(session) {
   };
   session.network = { blockedSegments: [], ...session.network };
   session.passengerTransfers ??= 0;
+  const expansionStationName = session.stations?.find((station) => station.id === "riverside")?.name || "Riverside";
+  session.projects = { riversideExpansion: createRiversideExpansionProject(expansionStationName), ...session.projects };
+  session.projects.riversideExpansion = { ...createRiversideExpansionProject(expansionStationName), ...session.projects.riversideExpansion };
+  if (session.mode === "career") {
+    session.career = {
+      cityId: session.cityId,
+      day: 1,
+      totalXp: 0,
+      completedTurns: 0,
+      completedProjectIds: [],
+      balanceCents: session.balanceCents,
+      ...session.career
+    };
+  }
+  session.turn = { status: "active", startedAt: 6 * 3600, minimumDuration: 300, summary: null, ...session.turn };
   session.commandIds ??= [];
   getAllTrains(session).forEach((train) => { train.faultActive ??= false; });
   return session;
+}
+
+function getCityProfile(cityId) {
+  return cityProfiles.find((city) => city.id === cityId) || cityProfiles[0];
+}
+
+function createCityStations(city) {
+  return stationBlueprint.map((station, index) => ({
+    ...station,
+    name: city.stationNames[index],
+    capacity: Math.round(station.capacity * city.capacityMultiplier),
+    demand: Number((station.demand * city.demandMultiplier).toFixed(2)),
+    queue: Math.round(station.queue * city.queueMultiplier),
+    arrivals: 0,
+    departures: 0
+  }));
+}
+
+function createRiversideExpansionProject(stationName = "Riverside") {
+  return {
+    id: "riverside-expansion",
+    title: `Expansão de plataformas de ${stationName}`,
+    stationId: "riverside",
+    status: "available",
+    costCents: 12_000_00,
+    constructionRemaining: 0,
+    capacityGain: 95
+  };
 }
 
 export function formatTime(seconds) {
@@ -165,6 +284,12 @@ export function applyCommand(session, command) {
       break;
     case "DIRECT_PASSENGERS":
       result = directPassengers(session, command.incidentId);
+      break;
+    case "APPROVE_EXPANSION":
+      result = approveExpansion(session, command.projectId);
+      break;
+    case "COMPLETE_TURN":
+      result = completeTurn(session);
       break;
     case "OBSERVE_NETWORK":
       session.missions.observe = true;
@@ -246,7 +371,7 @@ function isolateSignal(session, incidentId) {
   session.operatingCostCents += cost;
   incident.status = "responding";
   incident.responseRemaining = 22;
-  pushLog(session, "Centro de sinal mobilizado para isolar o trecho Central–Riverside.", "warning");
+  pushLog(session, `Centro de sinal mobilizado para isolar o trecho ${getStation(session, "central").name}–${getStation(session, "riverside").name}.`, "warning");
   return accept("Isolamento autorizado; a liberação do trecho exige 22 s de simulação.", { projectedCost: cost });
 }
 
@@ -273,6 +398,58 @@ function directPassengers(session, incidentId) {
   return accept(`${redirected} passageiros redirecionados; pressão nas plataformas reduzida.`, { projectedCost: cost, redirected });
 }
 
+function approveExpansion(session, projectId) {
+  const project = Object.values(session.projects).find((item) => item.id === projectId);
+  if (!project) return reject("Projeto de expansão não encontrado.");
+  if (project.status === "building") return reject("Essa expansão já está em construção.");
+  if (project.status === "complete") return reject("Essa expansão já foi entregue.");
+  if (session.balanceCents < project.costCents) return reject("Saldo insuficiente para aprovar a expansão.");
+  project.status = "building";
+  project.constructionRemaining = 64;
+  session.balanceCents -= project.costCents;
+  session.operatingCostCents += project.costCents;
+  pushLog(session, `Projeto aprovado: ${project.title}. Entrega estimada em 64 s de simulação.`, "info");
+  return accept("Expansão aprovada. A obra já está em andamento e será refletida na capacidade da estação.", { projectedCost: project.costCents });
+}
+
+function completeTurn(session) {
+  if (session.mode !== "career") return reject("O sandbox não registra progressão de carreira.");
+  if (session.turn.status === "complete") return reject("Este turno já foi encerrado.");
+  const elapsed = session.time - session.turn.startedAt;
+  if (elapsed < session.turn.minimumDuration) {
+    return reject(`Conduza a operação por mais ${session.turn.minimumDuration - elapsed} s de simulação antes de encerrar o turno.`);
+  }
+  const activeIncidents = getActiveIncidents(session);
+  const criticalOpen = activeIncidents.some((incident) => incident.severity === "critical");
+  const score = Math.max(0, Math.min(100, session.metrics.onTime + (criticalOpen ? -15 : 4) + (activeIncidents.length === 0 ? 6 : 0)));
+  const grade = score >= 94 ? "A" : score >= 84 ? "B" : score >= 74 ? "C" : "D";
+  const rewardCents = { A: 16_000_00, B: 10_000_00, C: 5_000_00, D: 0 }[grade];
+  const xpReward = { A: 35, B: 24, C: 12, D: 4 }[grade];
+  session.balanceCents += rewardCents;
+  session.revenueCents += rewardCents;
+  session.xp += xpReward;
+  session.reputation = Math.max(0, Math.min(100, session.reputation + (grade === "A" ? 5 : grade === "B" ? 2 : grade === "C" ? 0 : -4)));
+  session.career.totalXp += session.xp;
+  session.career.completedTurns += 1;
+  session.career.balanceCents = session.balanceCents;
+  session.career.reputation = session.reputation;
+  session.career.completedProjectIds = Object.values(session.projects)
+    .filter((project) => project.status === "complete")
+    .map((project) => project.id);
+  session.turn.status = "complete";
+  session.turn.summary = {
+    grade,
+    score,
+    rewardCents,
+    xpReward,
+    onTime: session.metrics.onTime,
+    incidentsOpen: activeIncidents.length
+  };
+  session.timeScale = 0;
+  pushLog(session, `Turno encerrado com nota ${grade}. Receita de desempenho registrada.`, "info");
+  return accept(`Turno concluído com nota ${grade}. O próximo dia da carreira está disponível.`, { summary: session.turn.summary });
+}
+
 export function tickSession(session, seconds = 1) {
   normalizeSession(session);
   for (let tick = 0; tick < seconds; tick += 1) {
@@ -281,6 +458,7 @@ export function tickSession(session, seconds = 1) {
     getVisibleTrains(session).forEach((train) => advanceTrain(session, train));
     session.operatingCostCents += 210;
     updateIncidents(session);
+    updateProjects(session);
     recalculate(session);
   }
   return session;
@@ -384,6 +562,24 @@ function updateIncidents(session) {
   updateCrowdingIncident(session);
 }
 
+function updateProjects(session) {
+  for (const project of Object.values(session.projects)) {
+    if (project.status !== "building") continue;
+    project.constructionRemaining -= 1;
+    if (project.constructionRemaining > 0) continue;
+    project.status = "complete";
+    project.completedAt = session.time;
+    const station = getStation(session, project.stationId);
+    if (station) {
+      station.capacity += project.capacityGain;
+      station.expansionLevel = (station.expansionLevel || 0) + 1;
+    }
+    session.missions.expansion = true;
+    session.xp += 32;
+    pushLog(session, `${project.title} concluída: +${project.capacityGain} de capacidade em ${station?.name || "Riverside"}.`, "info");
+  }
+}
+
 function triggerDoorFault(session) {
   if (session.scenario.doorFaultTriggered || session.time < session.scenario.doorFaultAt) return;
   const train = session.trains.find((item) => item.id === "VM-103");
@@ -416,7 +612,7 @@ function triggerSignalFault(session) {
     passengerPlanActive: false,
     startedAt: session.time
   });
-  pushLog(session, "Emergência: falha de sinal bloqueou o corredor Central–Riverside.", "danger");
+  pushLog(session, `Emergência: falha de sinal bloqueou o corredor ${getStation(session, "central").name}–${getStation(session, "riverside").name}.`, "danger");
 }
 
 function progressIncidentResponses(session) {
@@ -450,7 +646,7 @@ function resolveIncident(session, incident) {
     if (incident.passengerPlanActive) session.staff.passengerGuides += 1;
     session.missions.signal = true;
     session.xp += 30;
-    pushLog(session, "Sinal restabelecido: corredor Central–Riverside liberado para retomada gradual.", "info");
+    pushLog(session, `Sinal restabelecido: corredor ${getStation(session, "central").name}–${getStation(session, "riverside").name} liberado para retomada gradual.`, "info");
   }
 }
 

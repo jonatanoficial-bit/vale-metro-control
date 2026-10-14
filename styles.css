@@ -42,7 +42,7 @@ button:focus-visible, canvas:focus-visible { outline: 3px solid var(--cyan); out
   isolation: isolate;
 }
 
-.landing-screen[hidden], .game-screen[hidden] { display: none; }
+.landing-screen[hidden], .city-selection[hidden], .game-screen[hidden], .turn-summary[hidden] { display: none; }
 
 .landing-visual {
   position: absolute;
@@ -71,6 +71,18 @@ h2 { margin-bottom: 0; font-size: 1rem; }
 .landing-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; }
 .landing-hint { margin-top: 1rem; color: var(--muted); font-size: 0.83rem; }
 
+.city-selection { display: grid; min-height: 100vh; place-items: center; padding: 2rem; background: linear-gradient(135deg, rgba(3, 9, 20, 0.94), rgba(4, 38, 66, 0.91)), url("./assets/control-room-concept.png") center / cover; }
+.city-selection-panel { width: min(1040px, 100%); padding: clamp(1.2rem, 3vw, 2.4rem); }
+.city-selection h1 { max-width: 16ch; font-size: clamp(2rem, 5vw, 4rem); }
+.city-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem; margin: 1.5rem 0; }
+.city-card { min-height: 14rem; display: flex; flex-direction: column; align-items: flex-start; padding: 1.1rem; cursor: pointer; border: 1px solid rgba(104, 203, 255, 0.28); border-radius: 0.75rem; background: linear-gradient(145deg, rgba(4, 35, 61, 0.92), rgba(2, 16, 31, 0.9)); color: var(--text); text-align: left; transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease; }
+.city-card:hover, .city-card:focus-visible { transform: translateY(-3px); border-color: var(--cyan); box-shadow: 0 0 28px rgba(24, 181, 255, 0.2); outline: none; }
+.city-card .city-difficulty { color: var(--cyan); font-size: 0.67rem; font-weight: 900; letter-spacing: 0.1em; text-transform: uppercase; }
+.city-card strong { margin-top: 0.65rem; font-size: 1.1rem; }
+.city-card p { flex: 1; margin: 0.6rem 0; color: var(--muted); font-size: 0.76rem; line-height: 1.5; }
+.city-card small { color: #d9edf9; font-size: 0.72rem; }
+.city-card em { margin-top: 0.6rem; color: var(--green); font-size: 0.68rem; font-style: normal; font-weight: 800; }
+
 .button, .icon-button, .time-button, .text-button {
   cursor: pointer;
   border: 1px solid transparent;
@@ -95,7 +107,7 @@ h2 { margin-bottom: 0; font-size: 1rem; }
 .brand-lockup { display: flex; min-height: 4.5rem; align-items: center; gap: 0.7rem; border-radius: 0.75rem; padding: 0.4rem 0.75rem; }
 .brand-lockup img { width: 4rem; height: 3.35rem; object-fit: contain; }
 .brand-lockup strong { display: block; margin-top: 0.1rem; font-size: 0.98rem; }
-.vitals { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-radius: 0.75rem; padding: 0.65rem; }
+.vitals { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); border-radius: 0.75rem; padding: 0.65rem; }
 .vitals div { min-width: 0; padding: 0 0.65rem; border-right: 1px solid rgba(139, 207, 247, 0.14); }
 .vitals div:last-child { border-right: 0; }
 .vitals dt { overflow: hidden; color: var(--muted); font-size: 0.63rem; font-weight: 700; letter-spacing: 0.08em; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
@@ -139,6 +151,9 @@ h2 { margin-bottom: 0; font-size: 1rem; }
 .context-panel { display: flex; min-height: 0; flex-direction: column; }
 .context-panel h2 { margin-bottom: 0.38rem; }
 .context-panel .context-copy { color: var(--muted); font-size: 0.78rem; line-height: 1.5; }
+.project-summary { margin: 0.9rem 0; padding: 0.72rem; border: 1px solid rgba(80, 227, 154, 0.3); border-radius: 0.58rem; background: rgba(14, 93, 69, 0.16); }
+.project-summary strong { display: block; color: #d7f8e7; font-size: 0.76rem; }
+.project-summary p { margin: 0.28rem 0 0; color: var(--muted); font-size: 0.69rem; line-height: 1.45; }
 .key-value { display: grid; grid-template-columns: 1fr auto; gap: 0.58rem; margin: 0.9rem 0; padding: 0; list-style: none; }
 .key-value li { display: contents; }
 .key-value span { color: var(--muted); font-size: 0.74rem; }
@@ -164,6 +179,14 @@ h2 { margin-bottom: 0; font-size: 1rem; }
 .event-log li { overflow: hidden; color: var(--muted); font-size: 0.67rem; text-overflow: ellipsis; white-space: nowrap; }
 .event-log time { margin-right: 0.32rem; color: #e8f6ff; font-variant-numeric: tabular-nums; }
 
+.turn-summary { position: fixed; z-index: 20; inset: 0; display: grid; place-items: center; padding: 1.25rem; background: rgba(1, 8, 17, 0.76); backdrop-filter: blur(10px); }
+.turn-summary-card { width: min(520px, 100%); padding: 1.4rem; box-shadow: 0 24px 80px rgba(0, 0, 0, 0.58); }
+.turn-summary-card h1 { max-width: none; margin: 0.35rem 0 1rem; font-size: clamp(2rem, 6vw, 3.5rem); }
+.turn-grade { display: grid; grid-template-columns: auto 1fr; gap: 1rem; align-items: center; padding: 1rem; border: 1px solid rgba(71, 224, 255, 0.35); border-radius: 0.7rem; background: rgba(7, 45, 71, 0.72); }
+.turn-grade b { display: grid; width: 4.3rem; height: 4.3rem; place-items: center; border: 1px solid var(--cyan); border-radius: 50%; color: var(--cyan); font-size: 2rem; }
+.turn-grade p { margin: 0.2rem 0; color: var(--muted); font-size: 0.78rem; }
+.turn-summary-actions { display: flex; flex-wrap: wrap; gap: 0.65rem; margin-top: 1rem; }
+
 .portrait-notice { position: fixed; z-index: 10; inset: 0; display: none; place-content: center; justify-items: center; gap: 1rem; padding: 2rem; background: #061526; text-align: center; }
 .portrait-notice img { width: min(300px, 75vw); }
 .portrait-notice p { max-width: 24ch; color: var(--muted); line-height: 1.5; }
@@ -178,6 +201,8 @@ h2 { margin-bottom: 0; font-size: 1rem; }
   .context-panel { grid-column: 1 / -1; min-height: 0; max-height: 15rem; }
   .bottom-dock { grid-template-columns: 1fr 1fr; }
   .events-card { grid-column: 1 / -1; }
+  .city-options { grid-template-columns: 1fr; }
+  .city-card { min-height: 0; }
 }
 
 @media (max-width: 760px) and (orientation: portrait) { .portrait-notice { display: grid !important; } }
@@ -211,6 +236,8 @@ h2 { margin-bottom: 0; font-size: 1rem; }
   #network-canvas { min-height: 210px; }
   .context-panel { grid-column: auto; max-height: none; }
   .context-panel .context-copy, .key-value span, .key-value strong { font-size: 0.58rem; }
+  .project-summary { margin: 0.45rem 0; padding: 0.42rem; }
+  .project-summary p { font-size: 0.54rem; }
   .key-value { gap: 0.25rem; margin: 0.4rem 0; }
   .bottom-dock { display: none; }
 }

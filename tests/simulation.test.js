@@ -93,3 +93,69 @@ test("o plano de passageiros reduz filas e não pode ser duplicado", () => {
   assert.ok(after < before);
   assert.equal(session.missions.passengers, true);
 });
+
+test("a expansão de Riverside consome orçamento e aumenta a capacidade ao fim da obra", () => {
+  const session = createInitialSession();
+  const project = session.projects.riversideExpansion;
+  const riverside = session.stations.find((station) => station.id === "riverside");
+  const capacityBefore = riverside.capacity;
+  const balanceBefore = session.balanceCents;
+  const result = applyCommand(session, { id: "expansion-1", type: "APPROVE_EXPANSION", projectId: project.id });
+  assert.equal(result.accepted, true);
+  assert.equal(session.projects.riversideExpansion.status, "building");
+  assert.equal(session.balanceCents, balanceBefore - project.costCents);
+  tickSession(session, 64);
+  assert.equal(session.projects.riversideExpansion.status, "complete");
+  assert.equal(riverside.capacity, capacityBefore + project.capacityGain);
+  assert.equal(session.missions.expansion, true);
+});
+
+test("não é possível aprovar a mesma expansão duas vezes", () => {
+  const session = createInitialSession();
+  const project = session.projects.riversideExpansion;
+  const first = applyCommand(session, { id: "expansion-1", type: "APPROVE_EXPANSION", projectId: project.id });
+  const second = applyCommand(session, { id: "expansion-2", type: "APPROVE_EXPANSION", projectId: project.id });
+  assert.equal(first.accepted, true);
+  assert.equal(second.accepted, false);
+});
+
+test("cada cidade inicia uma rede de carreira com parâmetros próprios", () => {
+  const vale = createInitialSession("career", "vale-central");
+  const porto = createInitialSession("career", "porto-dourado");
+  const serra = createInitialSession("career", "serra-clara");
+  assert.equal(porto.city, "Porto Dourado");
+  assert.equal(porto.lineName, "Linha da Marina");
+  assert.equal(porto.stations.find((station) => station.id === "riverside").name, "Distrito do Porto");
+  assert.ok(porto.stations.find((station) => station.id === "riverside").demand > vale.stations.find((station) => station.id === "riverside").demand);
+  assert.ok(serra.balanceCents < vale.balanceCents);
+  assert.equal(porto.career.day, 1);
+});
+
+test("um turno de carreira pode ser avaliado e progride o perfil da cidade", () => {
+  const session = createInitialSession("career", "serra-clara");
+  tickSession(session, 300);
+  const result = applyCommand(session, { id: "complete-1", type: "COMPLETE_TURN" });
+  assert.equal(result.accepted, true);
+  assert.equal(session.turn.status, "complete");
+  assert.ok(["A", "B", "C", "D"].includes(session.turn.summary.grade));
+  assert.equal(session.career.completedTurns, 1);
+  assert.equal(session.career.balanceCents, session.balanceCents);
+  assert.equal(session.timeScale, 0);
+});
+
+test("uma expansão entregue permanece disponível nos próximos dias da carreira", () => {
+  const session = createInitialSession("career", "vale-central");
+  const project = session.projects.riversideExpansion;
+  applyCommand(session, { id: "expansion-1", type: "APPROVE_EXPANSION", projectId: project.id });
+  tickSession(session, 300);
+  applyCommand(session, { id: "complete-1", type: "COMPLETE_TURN" });
+
+  const nextDay = createInitialSession("career", "vale-central", {
+    ...session.career,
+    day: session.career.day + 1
+  });
+  const expandedStation = nextDay.stations.find((station) => station.id === "riverside");
+
+  assert.equal(nextDay.projects.riversideExpansion.status, "complete");
+  assert.equal(expandedStation.capacity, 135 + project.capacityGain);
+});
