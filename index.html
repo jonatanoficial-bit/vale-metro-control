@@ -14,7 +14,7 @@
         <div class="landing-visual" aria-hidden="true"></div>
         <div class="landing-content">
           <img class="landing-logo" src="./assets/vale-metro-control-logo.png" alt="Vale Metro Control" />
-          <p class="eyebrow">PROTÓTIPO OPERACIONAL · BUILD 0.2.0</p>
+          <p class="eyebrow">CENTRAL METROPOLITANA · BUILD 0.3.0</p>
           <h1 id="game-title">A cidade está em movimento.</h1>
           <p class="landing-copy">
             Coordene a Linha Vale, responda a uma demanda crescente em Riverside e mantenha o serviço seguro.
@@ -55,6 +55,7 @@
             <div><dt>Fila crítica</dt><dd id="queue-value">--</dd></div>
             <div><dt>Saldo</dt><dd id="balance-value">--</dd></div>
             <div><dt>Carreira</dt><dd id="career-value">--</dd></div>
+            <div><dt>Frota</dt><dd id="fleet-value">--</dd></div>
           </dl>
           <div class="time-controls" aria-label="Controles de tempo">
             <button class="icon-button" data-time="0" aria-label="Pausar simulação" title="Pausar (espaço)">Ⅱ</button>
@@ -73,10 +74,12 @@
               </div>
               <span class="status-pill good" id="line-status">EM OPERAÇÃO</span>
             </div>
-            <p class="rail-summary">Uma linha, cinco estações, quatro composições e uma reserva no pátio.</p>
+            <p id="line-summary" class="rail-summary">Uma linha, cinco estações, quatro composições e uma reserva no pátio.</p>
             <div id="train-list" class="train-list" aria-label="Lista de trens"></div>
             <button id="dispatch-reserve" class="button primary full-width">Enviar trem reserva</button>
             <p class="microcopy">R$ 4.800 · requer trem e janela de despacho disponíveis</p>
+            <button id="activate-support-line" class="button secondary full-width">Ativar linha complementar</button>
+            <p id="support-line-copy" class="microcopy">Linha complementar disponível para ampliar a cobertura.</p>
           </aside>
 
           <section class="map-panel panel" aria-label="Mapa interativo da rede">
@@ -88,6 +91,7 @@
               <div class="legend" aria-label="Legenda do mapa">
                 <span><i class="legend-dot train"></i>Trem</span>
                 <span><i class="legend-dot station"></i>Estação</span>
+                <span><i class="legend-dot support"></i>Expressa</span>
                 <span><i class="legend-dot warning"></i>Risco</span>
               </div>
             </div>
@@ -129,6 +133,16 @@
               <button id="complete-turn" class="text-button">Encerrar turno</button>
             </div>
             <ul id="event-log" class="event-log" aria-label="Eventos recentes"></ul>
+          </section>
+          <section class="policy-card panel">
+            <div class="panel-heading compact">
+              <div>
+                <p class="eyebrow">GESTÃO E POLÍTICAS</p>
+                <h2>Conselho metropolitano</h2>
+              </div>
+              <span class="status-pill good">ESTRATÉGIA</span>
+            </div>
+            <div id="policy-list" class="policy-list" aria-label="Decisões estratégicas"></div>
           </section>
         </footer>
       </section>

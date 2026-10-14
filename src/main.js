@@ -26,13 +26,17 @@ const els = {
   queue: document.querySelector("#queue-value"),
   balance: document.querySelector("#balance-value"),
   career: document.querySelector("#career-value"),
+  fleet: document.querySelector("#fleet-value"),
   cityName: document.querySelector("#city-name"),
   lineName: document.querySelector("#line-name"),
+  lineSummary: document.querySelector("#line-summary"),
   corridorName: document.querySelector("#corridor-name"),
   trainList: document.querySelector("#train-list"),
   context: document.querySelector("#context-panel"),
   lineStatus: document.querySelector("#line-status"),
   dispatchReserve: document.querySelector("#dispatch-reserve"),
+  activateSupportLine: document.querySelector("#activate-support-line"),
+  supportLineCopy: document.querySelector("#support-line-copy"),
   missionList: document.querySelector("#mission-list"),
   xp: document.querySelector("#xp-value"),
   alertTitle: document.querySelector("#alert-title"),
@@ -40,6 +44,7 @@ const els = {
   alertSeverity: document.querySelector("#alert-severity"),
   alertActions: document.querySelector("#alert-actions"),
   eventLog: document.querySelector("#event-log"),
+  policyList: document.querySelector("#policy-list"),
   completeTurn: document.querySelector("#complete-turn"),
   turnSummary: document.querySelector("#turn-summary"),
   turnSummaryContent: document.querySelector("#turn-summary-content"),
@@ -78,6 +83,12 @@ async function init() {
     button.addEventListener("click", () => setTimeScale(Number(button.dataset.time)));
   });
   els.dispatchReserve.addEventListener("click", () => runCommand({ type: "DISPATCH_RESERVE" }));
+  els.activateSupportLine.addEventListener("click", () => runCommand({ type: "ACTIVATE_SUPPORT_LINE" }));
+  els.policyList.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-policy-command]");
+    if (!button || button.disabled) return;
+    runCommand({ type: button.dataset.policyCommand });
+  });
   els.alertActions.addEventListener("click", (event) => {
     const button = event.target.closest("[data-alert-command]");
     if (!button || button.disabled) return;
@@ -208,7 +219,8 @@ async function completeCurrentTurn() {
       reputation: session.reputation,
       totalXp: session.career.totalXp,
       completedTurns: session.career.completedTurns,
-      completedProjectIds: session.career.completedProjectIds
+      completedProjectIds: session.career.completedProjectIds,
+      policyState: session.career.policyState
     };
     careerProfiles[session.cityId] = nextProfile;
     await saveStore.saveCareerProfiles(careerProfiles);
@@ -240,7 +252,25 @@ function render() {
   els.cityName.textContent = session.city;
   els.lineName.textContent = session.lineName;
   els.corridorName.textContent = `Corredor ${session.corridor}`;
+  els.canvas.setAttribute("aria-label", `Mapa de ${session.lineName} com estações e trens selecionáveis`);
   els.career.textContent = session.mode === "career" ? `Dia ${session.career.day}` : "Sandbox";
+  const visibleFleet = getAllTrains(session).filter((train) => train.visible);
+  const averageCondition = Math.round(visibleFleet.reduce((sum, train) => sum + train.condition, 0) / Math.max(visibleFleet.length, 1));
+  els.fleet.textContent = `${averageCondition}% · ${session.metrics.activeLines} linha${session.metrics.activeLines === 1 ? "" : "s"}`;
+  const supportOperating = session.network.supportLineStatus === "operating";
+  const supportActivating = session.network.supportLineStatus === "activating";
+  els.lineSummary.textContent = supportOperating
+    ? `${session.lineName} e ${session.supportLineName} operam em conjunto, com ${getVisibleTrains(session).length} composições em serviço.`
+    : `Uma linha, cinco estações, quatro composições e uma reserva no pátio. ${session.supportLineName} está disponível.`;
+  els.activateSupportLine.disabled = supportOperating || supportActivating;
+  els.activateSupportLine.textContent = supportOperating
+    ? `${session.supportLineName} em operação`
+    : supportActivating
+      ? `${session.supportLineName} em preparação`
+      : `Ativar ${session.supportLineName} · ${formatCurrency(6_800_00)}`;
+  els.supportLineCopy.textContent = supportOperating
+    ? `VM-201 reforça as conexões expressas entre as estações-chave.`
+    : `R$ 6.800 · libera VM-201 em uma rota expressa de conexão.`;
   const remainingTurnTime = Math.max(0, session.turn.minimumDuration - (session.time - session.turn.startedAt));
   els.completeTurn.disabled = session.mode !== "career" || session.turn.status === "complete";
   els.completeTurn.textContent = session.turn.status === "complete"
@@ -257,6 +287,7 @@ function render() {
   renderMission();
   renderAlerts();
   renderLog();
+  renderPolicies();
   renderMap();
 }
 
@@ -267,8 +298,8 @@ function renderTrains() {
     const occupancy = train.visible ? `${Math.round(train.occupancy / train.capacity * 100)}%` : "Pronto";
     return `<button class="train-row${selectedClass}" data-select-train="${train.id}">
       <i class="train-indicator${warning}"></i>
-      <span><strong>${train.id}</strong><small>${getStatusText(train.status)}</small></span>
-      <b>${occupancy}</b>
+      <span><strong>${train.id}</strong><small>${getTrainLineLabel(train)} · ${getStatusText(train.status)}</small></span>
+      <b>${occupancy}<small>${train.condition}%</small></b>
     </button>`;
   }).join("");
   els.trainList.querySelectorAll("[data-select-train]").forEach((button) => {
@@ -292,17 +323,21 @@ function renderContext() {
     const canHold = train.visible && !["HELD", "DEPOT_READY", "DISPATCHING"].includes(train.status);
     const incident = getActiveIncidents(session).find((item) => item.trainId === train.id);
     const incidentStatus = incident?.status === "responding" ? `Equipe a caminho · ${incident.responseRemaining}s` : "Falha de porta ativa";
+    const maintenanceRecommended = train.condition < 92 && !incident && train.status !== "MAINTENANCE" && train.visible;
     els.context.innerHTML = `<div class="panel-heading"><div><p class="eyebrow">TREM SELECIONADO</p><h2>${train.id}</h2></div><span class="status-pill ${train.status === "HELD" || incident ? "warning" : "good"}">${incident ? incidentStatus : getStatusText(train.status)}</span></div>
       <p class="context-copy">O comando é validado pelo motor e seus efeitos aparecem no mapa, na fila e no registro.</p>
       <ul class="key-value">
         <li><span>Próxima estação</span><strong>${next.name}</strong></li>
         <li><span>Ocupação</span><strong>${train.occupancy} / ${train.capacity}</strong></li>
+        <li><span>Condição da frota</span><strong>${train.condition}% ${train.condition < 70 ? "· atenção" : ""}</strong></li>
         <li><span>Atraso</span><strong>+${train.delaySec}s</strong></li>
         <li><span>Intervalo</span><strong>${session.metrics.onTime >= 93 ? "regular" : "sob pressão"}</strong></li>
         ${incident ? `<li><span>Ocorrência</span><strong>${incident.type}</strong></li>` : ""}
       </ul>
       <div class="action-stack">
         ${incident ? `<button class="button danger" data-command="maintenance" data-incident="${incident.id}" ${incident.status === "responding" ? "disabled" : ""}>${incident.status === "responding" ? "Equipe em resposta" : "Enviar manutenção"}</button>` : ""}
+        ${maintenanceRecommended ? `<button class="button primary" data-command="preventive" data-train="${train.id}">Manutenção preventiva · ${formatCurrency(2_200_00)}</button>` : ""}
+        ${train.status === "MAINTENANCE" ? `<button class="button secondary" disabled>Manutenção em curso · ${train.maintenanceRemaining}s</button>` : ""}
         ${train.status === "HELD"
           ? `<button class="button primary" data-command="release" data-train="${train.id}">Liberar trem</button>`
           : `<button class="button warn" data-command="hold" data-train="${train.id}" ${canHold ? "" : "disabled"}>Segurar no próximo ponto</button>`}
@@ -343,6 +378,7 @@ function renderContext() {
       if (command === "reserve") runCommand({ type: "DISPATCH_RESERVE" });
       if (command === "observe") runCommand({ type: "OBSERVE_NETWORK" });
       if (command === "maintenance") runCommand({ type: "ASSIGN_MAINTENANCE", incidentId: button.dataset.incident });
+      if (command === "preventive") runCommand({ type: "SCHEDULE_PREVENTIVE_MAINTENANCE", trainId: train });
       if (command === "expansion") runCommand({ type: "APPROVE_EXPANSION", projectId: button.dataset.project });
     });
   });
@@ -360,7 +396,10 @@ function renderMission() {
     [session.missions.maintenance, "Coordene a resposta a uma falha leve"],
     [session.missions.signal, "Isole uma falha de sinal crítica"],
     [session.missions.passengers, "Direcione passageiros durante uma emergência"],
-    [session.missions.expansion, "Entregue uma expansão urbana na estação prioritária"]
+    [session.missions.expansion, "Entregue uma expansão urbana na estação prioritária"],
+    [session.missions.supportLine, "Ative uma segunda linha para ampliar a rede"],
+    [session.missions.preventiveMaintenance, "Programe manutenção preventiva da frota"],
+    [session.missions.peakService, "Aplique uma política de reforço no pico"]
   ];
   els.missionList.innerHTML = missions.map(([done, text]) => `<li class="${done ? "done" : ""}">${text}</li>`).join("");
 }
@@ -406,6 +445,48 @@ function renderLog() {
   els.eventLog.innerHTML = session.log.slice(0, 4).map((event) => `<li><time>${formatTime(event.at)}</time>${event.text}</li>`).join("");
 }
 
+function renderPolicies() {
+  const policies = [
+    {
+      command: "ACTIVATE_PEAK_SERVICE",
+      title: "Reforço de pico",
+      copy: session.policies.peakBoostRemaining > 0
+        ? `Ativo por mais ${session.policies.peakBoostRemaining}s de simulação.`
+        : "Acelera embarques durante 150 s para reduzir a pressão nas plataformas.",
+      button: session.policies.peakBoostRemaining > 0 ? "Reforço ativo" : `Ativar · ${formatCurrency(3_600_00)}`,
+      active: session.policies.peakBoostRemaining > 0
+    },
+    {
+      command: "ACTIVATE_GREEN_ENERGY",
+      title: "Energia eficiente",
+      copy: session.policies.greenEnergy
+        ? "Ativa: o custo operacional por segundo já está reduzido."
+        : "Moderniza a matriz energética e reduz o custo recorrente da rede.",
+      button: session.policies.greenEnergy ? "Programa ativo" : `Aprovar · ${formatCurrency(8_400_00)}`,
+      active: session.policies.greenEnergy
+    },
+    {
+      command: "SET_SOCIAL_FARE",
+      title: "Tarifa social",
+      copy: session.policies.farePlan === "social"
+        ? "Ativa: mais reputação, com menor receita por embarque."
+        : "Aumenta acesso e reputação, reduzindo a receita unitária.",
+      button: session.policies.farePlan === "social" ? "Tarifa ativa" : "Aprovar plano",
+      active: session.policies.farePlan === "social"
+    }
+  ];
+  els.policyList.innerHTML = policies.map((policy) => `<article class="policy-item ${policy.active ? "active" : ""}">
+    <div><strong>${policy.title}</strong><p>${policy.copy}</p></div>
+    <button class="text-button" data-policy-command="${policy.command}" ${policy.active ? "disabled" : ""}>${policy.button}</button>
+  </article>`).join("");
+}
+
+function getTrainLineLabel(train) {
+  if (train.line === "SUPORTE") return session.supportLineName;
+  if (train.line === "RESERVA") return "Reserva";
+  return session.lineName;
+}
+
 function renderMap() {
   if (!session || els.game.hidden) return;
   const rect = els.canvas.getBoundingClientRect();
@@ -441,23 +522,11 @@ function mapPoint(node, width, height) {
 }
 
 function drawTrack(width, height) {
-  canvasContext.save();
-  canvasContext.lineCap = "round";
-  canvasContext.lineJoin = "round";
-  canvasContext.beginPath();
-  session.stations.forEach((station, index) => {
-    const point = mapPoint(station, width, height);
-    if (index === 0) canvasContext.moveTo(point.x, point.y); else canvasContext.lineTo(point.x, point.y);
-  });
-  canvasContext.strokeStyle = "rgba(7, 52, 84, 0.95)";
-  canvasContext.lineWidth = 18;
-  canvasContext.stroke();
-  canvasContext.strokeStyle = "rgba(25, 179, 255, 0.88)";
-  canvasContext.lineWidth = 5;
-  canvasContext.shadowBlur = 16;
-  canvasContext.shadowColor = "#19bfff";
-  canvasContext.stroke();
-  canvasContext.restore();
+  drawRoute(session.stations, "rgba(7, 52, 84, 0.95)", "rgba(25, 179, 255, 0.88)", 18, 5, width, height);
+  if (session.supportTrain?.visible) {
+    const supportStations = session.supportTrain.route.map((id) => getStation(session, id));
+    drawRoute(supportStations, "rgba(53, 17, 86, 0.94)", "rgba(194, 105, 255, 0.94)", 13, 3.5, width, height);
+  }
   if (session.network.blockedSegments.includes("central:riverside")) {
     const central = mapPoint(session.stations.find((station) => station.id === "central"), width, height);
     const riverside = mapPoint(session.stations.find((station) => station.id === "riverside"), width, height);
@@ -472,6 +541,26 @@ function drawTrack(width, height) {
     canvasContext.stroke();
     canvasContext.restore();
   }
+}
+
+function drawRoute(stations, underlay, color, underlayWidth, lineWidth, width, height) {
+  canvasContext.save();
+  canvasContext.lineCap = "round";
+  canvasContext.lineJoin = "round";
+  canvasContext.beginPath();
+  stations.forEach((station, index) => {
+    const point = mapPoint(station, width, height);
+    if (index === 0) canvasContext.moveTo(point.x, point.y); else canvasContext.lineTo(point.x, point.y);
+  });
+  canvasContext.strokeStyle = underlay;
+  canvasContext.lineWidth = underlayWidth;
+  canvasContext.stroke();
+  canvasContext.strokeStyle = color;
+  canvasContext.lineWidth = lineWidth;
+  canvasContext.shadowBlur = 16;
+  canvasContext.shadowColor = color;
+  canvasContext.stroke();
+  canvasContext.restore();
 }
 
 function drawStations(width, height) {

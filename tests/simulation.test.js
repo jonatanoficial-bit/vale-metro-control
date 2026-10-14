@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { applyCommand, createInitialSession, getVisibleTrains, tickSession } from "../src/simulation.js";
+import { applyCommand, createInitialSession, getVisibleTrains, normalizeSession, tickSession } from "../src/simulation.js";
 
 test("o trem reserva desconta o custo uma única vez e entra em despacho", () => {
   const session = createInitialSession();
@@ -158,4 +158,60 @@ test("uma expansão entregue permanece disponível nos próximos dias da carreir
 
   assert.equal(nextDay.projects.riversideExpansion.status, "complete");
   assert.equal(expandedStation.capacity, 135 + project.capacityGain);
+});
+
+test("a linha complementar entra em operação como uma segunda rota", () => {
+  const session = createInitialSession("career", "vale-central");
+  const initialBalance = session.balanceCents;
+  const result = applyCommand(session, { id: "support-1", type: "ACTIVATE_SUPPORT_LINE" });
+
+  assert.equal(result.accepted, true);
+  assert.equal(session.supportTrain.status, "DISPATCHING");
+  assert.equal(session.network.supportLineStatus, "activating");
+  assert.equal(session.balanceCents, initialBalance - 680000);
+  tickSession(session, 20);
+  assert.equal(session.supportTrain.status, "DWELLING");
+  assert.equal(session.network.supportLineStatus, "operating");
+  assert.equal(session.metrics.activeLines, 2);
+});
+
+test("a manutenção preventiva recupera a condição e devolve a equipe", () => {
+  const session = createInitialSession("career", "vale-central");
+  const train = session.trains.find((item) => item.id === "VM-102");
+  const result = applyCommand(session, { id: "preventive-1", type: "SCHEDULE_PREVENTIVE_MAINTENANCE", trainId: train.id });
+
+  assert.equal(result.accepted, true);
+  assert.equal(train.status, "MAINTENANCE");
+  assert.equal(session.staff.maintenanceAvailable, 0);
+  tickSession(session, 26);
+  assert.equal(train.condition, 98);
+  assert.equal(train.status, "DWELLING");
+  assert.equal(session.staff.maintenanceAvailable, 1);
+  assert.equal(session.missions.preventiveMaintenance, true);
+});
+
+test("políticas estratégicas alteram custo, tarifa e reforço temporário", () => {
+  const session = createInitialSession("career", "porto-dourado");
+  const balanceBefore = session.balanceCents;
+  const energy = applyCommand(session, { id: "energy-1", type: "ACTIVATE_GREEN_ENERGY" });
+  const fare = applyCommand(session, { id: "fare-1", type: "SET_SOCIAL_FARE" });
+  const peak = applyCommand(session, { id: "peak-1", type: "ACTIVATE_PEAK_SERVICE" });
+
+  assert.equal(energy.accepted, true);
+  assert.equal(fare.accepted, true);
+  assert.equal(peak.accepted, true);
+  assert.equal(session.policies.greenEnergy, true);
+  assert.equal(session.policies.farePlan, "social");
+  assert.equal(session.policies.peakBoostRemaining, 150);
+  assert.equal(session.balanceCents, balanceBefore - 840000 - 360000);
+  tickSession(session, 150);
+  assert.equal(session.policies.peakBoostRemaining, 0);
+});
+
+test("saves anteriores recebem o indicador de linhas ativas ao serem retomados", () => {
+  const legacySession = createInitialSession("career", "vale-central");
+  delete legacySession.metrics.activeLines;
+  const resumed = normalizeSession(legacySession);
+
+  assert.equal(resumed.metrics.activeLines, 1);
 });

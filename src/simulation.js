@@ -1,10 +1,12 @@
 const route = ["depot", "norte", "central", "riverside", "porto"];
+const supportRoute = ["norte", "central", "porto"];
 
 export const cityProfiles = [
   {
     id: "vale-central",
     name: "Vale Central",
     lineName: "Linha Vale",
+    supportLineName: "Linha Horizonte",
     corridor: "Vale Norte — Porto Azul",
     description: "Rede equilibrada, indicada para construir a primeira carreira.",
     difficulty: "Operação moderada",
@@ -18,6 +20,7 @@ export const cityProfiles = [
     id: "porto-dourado",
     name: "Porto Dourado",
     lineName: "Linha da Marina",
+    supportLineName: "Linha Costeira",
     corridor: "Estaleiro — Terminal Oceano",
     description: "Cidade portuária de alto fluxo: mais receita, pressão maior nos picos.",
     difficulty: "Demanda intensa",
@@ -31,6 +34,7 @@ export const cityProfiles = [
     id: "serra-clara",
     name: "Serra Clara",
     lineName: "Linha das Serras",
+    supportLineName: "Linha das Colinas",
     corridor: "Parque Alto — Vale do Sol",
     description: "Corredor residencial com orçamento menor e necessidade de regularidade.",
     difficulty: "Orçamento restrito",
@@ -51,15 +55,26 @@ export const stationBlueprint = [
 ];
 
 const trainBlueprint = [
-  { id: "VM-101", segmentIndex: 0, progress: 0.26, status: "EN_ROUTE", occupancy: 72, delaySec: 0 },
-  { id: "VM-102", segmentIndex: 1, progress: 0.43, status: "EN_ROUTE", occupancy: 108, delaySec: 16 },
-  { id: "VM-103", segmentIndex: 2, progress: 0, status: "DWELLING", occupancy: 133, delaySec: 0, dwellRemaining: 11 },
-  { id: "VM-104", segmentIndex: 3, progress: 0.52, status: "EN_ROUTE", occupancy: 64, delaySec: 8 }
+  { id: "VM-101", segmentIndex: 0, progress: 0.26, status: "EN_ROUTE", occupancy: 72, delaySec: 0, condition: 94 },
+  { id: "VM-102", segmentIndex: 1, progress: 0.43, status: "EN_ROUTE", occupancy: 108, delaySec: 16, condition: 78 },
+  { id: "VM-103", segmentIndex: 2, progress: 0, status: "DWELLING", occupancy: 133, delaySec: 0, dwellRemaining: 11, condition: 88 },
+  { id: "VM-104", segmentIndex: 3, progress: 0.52, status: "EN_ROUTE", occupancy: 64, delaySec: 8, condition: 91 }
 ];
+
+const supportTrainBlueprint = {
+  id: "VM-201",
+  segmentIndex: 0,
+  progress: 0,
+  status: "DEPOT_READY",
+  occupancy: 0,
+  delaySec: 0,
+  condition: 86
+};
 
 const statusText = {
   DEPOT_READY: "No pátio",
   DISPATCHING: "Em despacho",
+  MAINTENANCE: "Em manutenção",
   EN_ROUTE: "Em rota",
   DWELLING: "Em plataforma",
   HELD: "Retido",
@@ -72,19 +87,21 @@ export function createInitialSession(mode = "career", cityId = "vale-central", c
   const stations = createCityStations(city);
   const projects = { riversideExpansion: createRiversideExpansionProject(city.stationNames[3]) };
   const completedProjectIds = careerProfile?.completedProjectIds ?? [];
+  const policyState = careerProfile?.policyState ?? {};
   if (mode === "career" && completedProjectIds.includes(projects.riversideExpansion.id)) {
     projects.riversideExpansion.status = "complete";
     const station = stations.find((item) => item.id === projects.riversideExpansion.stationId);
     if (station) station.capacity += projects.riversideExpansion.capacityGain;
   }
   const session = {
-    schemaVersion: 5,
+    schemaVersion: 6,
     mode,
     time: 6 * 3600,
     timeScale: 1,
     city: city.name,
     cityId: city.id,
     lineName: city.lineName,
+    supportLineName: city.supportLineName,
     corridor: city.corridor,
     balanceCents,
     revenueCents: 0,
@@ -98,8 +115,20 @@ export function createInitialSession(mode = "career", cityId = "vale-central", c
       capacity: 180,
       delaySec: train.delaySec + (city.id === "porto-dourado" ? 4 : city.id === "serra-clara" ? 1 : 0),
       holdRequested: false,
+      line: "PRINCIPAL",
+      maintenanceRemaining: 0,
       visible: true
     })),
+    supportTrain: {
+      ...supportTrainBlueprint,
+      route: [...supportRoute],
+      capacity: 160,
+      line: "SUPORTE",
+      dispatchRemaining: 0,
+      maintenanceRemaining: 0,
+      holdRequested: false,
+      visible: false
+    },
     reserve: {
       id: "VM-R01",
       route: [...route],
@@ -109,11 +138,17 @@ export function createInitialSession(mode = "career", cityId = "vale-central", c
       occupancy: 0,
       capacity: 180,
       delaySec: 0,
+      condition: 93,
+      line: "RESERVA",
       dispatchRemaining: 0,
+      maintenanceRemaining: 0,
       visible: false,
       holdRequested: false
     },
-    missions: { observe: false, hold: false, reserve: false, maintenance: false, signal: false, passengers: false, expansion: false },
+    missions: {
+      observe: false, hold: false, reserve: false, maintenance: false, signal: false, passengers: false, expansion: false,
+      supportLine: false, preventiveMaintenance: false, greenEnergy: false, socialFare: false, peakService: false
+    },
     incidents: [],
     incidentHistory: [],
     staff: { maintenanceAvailable: 1, signalAvailable: 1, passengerGuides: 2 },
@@ -123,7 +158,13 @@ export function createInitialSession(mode = "career", cityId = "vale-central", c
       signalFaultAt: 6 * 3600 + 360,
       signalFaultTriggered: false
     },
-    network: { blockedSegments: [] },
+    network: { blockedSegments: [], supportLineStatus: "available" },
+    policies: {
+      farePlan: policyState.farePlan ?? "balanced",
+      greenEnergy: policyState.greenEnergy ?? false,
+      peakBoostRemaining: 0,
+      peakServiceDeployed: false
+    },
     passengerTransfers: 0,
     projects,
     career: mode === "career" ? {
@@ -132,6 +173,7 @@ export function createInitialSession(mode = "career", cityId = "vale-central", c
       totalXp: careerProfile?.totalXp ?? 0,
       completedTurns: careerProfile?.completedTurns ?? 0,
       completedProjectIds,
+      policyState,
       balanceCents
     } : null,
     turn: {
@@ -142,7 +184,7 @@ export function createInitialSession(mode = "career", cityId = "vale-central", c
     },
     log: [],
     commandIds: [],
-    metrics: { totalQueue: 0, criticalStationId: "riverside", onTime: 100, activeTrains: 4 }
+    metrics: { totalQueue: 0, criticalStationId: "riverside", onTime: 100, activeTrains: 4, activeLines: 1 }
   };
   pushLog(session, `${mode === "career" ? `Dia ${session.career.day} da carreira em ${city.name}` : "Sandbox"}: rede em operação às 06:00.`, "info");
   recalculate(session);
@@ -151,12 +193,17 @@ export function createInitialSession(mode = "career", cityId = "vale-central", c
 
 export function normalizeSession(session) {
   const city = getCityProfile(session.cityId || "vale-central");
-  session.schemaVersion = 5;
+  session.schemaVersion = 6;
   session.cityId ??= city.id;
   session.city ??= city.name;
   session.lineName ??= city.lineName;
+  session.supportLineName ??= city.supportLineName;
   session.corridor ??= city.corridor;
-  session.missions = { observe: false, hold: false, reserve: false, maintenance: false, signal: false, passengers: false, expansion: false, ...session.missions };
+  session.missions = {
+    observe: false, hold: false, reserve: false, maintenance: false, signal: false, passengers: false, expansion: false,
+    supportLine: false, preventiveMaintenance: false, greenEnergy: false, socialFare: false, peakService: false,
+    ...session.missions
+  };
   session.incidents ??= [];
   session.incidentHistory ??= [];
   session.staff = { maintenanceAvailable: 1, signalAvailable: 1, passengerGuides: 2, ...session.staff };
@@ -167,7 +214,8 @@ export function normalizeSession(session) {
     signalFaultTriggered: false,
     ...session.scenario
   };
-  session.network = { blockedSegments: [], ...session.network };
+  session.network = { blockedSegments: [], supportLineStatus: "available", ...session.network };
+  session.policies = { farePlan: "balanced", greenEnergy: false, peakBoostRemaining: 0, peakServiceDeployed: false, ...session.policies };
   session.passengerTransfers ??= 0;
   const expansionStationName = session.stations?.find((station) => station.id === "riverside")?.name || "Riverside";
   session.projects = { riversideExpansion: createRiversideExpansionProject(expansionStationName), ...session.projects };
@@ -179,13 +227,41 @@ export function normalizeSession(session) {
       totalXp: 0,
       completedTurns: 0,
       completedProjectIds: [],
+      policyState: {},
       balanceCents: session.balanceCents,
       ...session.career
     };
   }
   session.turn = { status: "active", startedAt: 6 * 3600, minimumDuration: 300, summary: null, ...session.turn };
   session.commandIds ??= [];
-  getAllTrains(session).forEach((train) => { train.faultActive ??= false; });
+  session.supportTrain ??= {
+    ...supportTrainBlueprint,
+    route: [...supportRoute],
+    capacity: 160,
+    line: "SUPORTE",
+    dispatchRemaining: 0,
+    maintenanceRemaining: 0,
+    holdRequested: false,
+    visible: false
+  };
+  getAllTrains(session).forEach((train) => {
+    train.faultActive ??= false;
+    train.condition ??= 88;
+    train.maintenanceRemaining ??= 0;
+    train.line ??= train.id === "VM-201" ? "SUPORTE" : train.id === "VM-R01" ? "RESERVA" : "PRINCIPAL";
+  });
+  const activeLineCount = new Set(getVisibleTrains(session)
+    .filter((train) => train.line !== "RESERVA")
+    .map((train) => train.line)).size || 1;
+  session.metrics = {
+    totalQueue: 0,
+    criticalStationId: "riverside",
+    onTime: 100,
+    activeTrains: 4,
+    activeLines: activeLineCount,
+    ...session.metrics
+  };
+  session.metrics.activeLines ??= activeLineCount;
   return session;
 }
 
@@ -227,7 +303,7 @@ export function getStation(session, id) {
 }
 
 export function getAllTrains(session) {
-  return [...session.trains, session.reserve];
+  return [...session.trains, session.supportTrain, session.reserve].filter(Boolean);
 }
 
 export function getVisibleTrains(session) {
@@ -276,6 +352,12 @@ export function applyCommand(session, command) {
     case "DISPATCH_RESERVE":
       result = dispatchReserve(session);
       break;
+    case "ACTIVATE_SUPPORT_LINE":
+      result = activateSupportLine(session);
+      break;
+    case "SCHEDULE_PREVENTIVE_MAINTENANCE":
+      result = schedulePreventiveMaintenance(session, command.trainId);
+      break;
     case "ASSIGN_MAINTENANCE":
       result = assignMaintenance(session, command.incidentId);
       break;
@@ -287,6 +369,15 @@ export function applyCommand(session, command) {
       break;
     case "APPROVE_EXPANSION":
       result = approveExpansion(session, command.projectId);
+      break;
+    case "ACTIVATE_GREEN_ENERGY":
+      result = activateGreenEnergy(session);
+      break;
+    case "SET_SOCIAL_FARE":
+      result = setSocialFare(session);
+      break;
+    case "ACTIVATE_PEAK_SERVICE":
+      result = activatePeakService(session);
       break;
     case "COMPLETE_TURN":
       result = completeTurn(session);
@@ -341,6 +432,44 @@ function dispatchReserve(session) {
   session.xp += 20;
   pushLog(session, "VM-R01: trem reserva liberado do pátio. Custo operacional registrado.", "info");
   return accept("Trem reserva em preparação; entrada estimada em 24 s de simulação.", { projectedCost: cost });
+}
+
+function activateSupportLine(session) {
+  const train = session.supportTrain;
+  const cost = 6_800_00;
+  if (!train || train.status !== "DEPOT_READY") return reject("A linha complementar já está em operação ou em preparação.");
+  if (session.balanceCents < cost) return reject("Saldo insuficiente para ativar a linha complementar.");
+  train.visible = true;
+  train.status = "DISPATCHING";
+  train.dispatchRemaining = 20;
+  session.network.supportLineStatus = "activating";
+  session.balanceCents -= cost;
+  session.operatingCostCents += cost;
+  session.missions.supportLine = true;
+  session.xp += 26;
+  pushLog(session, `${session.supportLineName}: ativação autorizada. ${train.id} entra em serviço em 20 s.`, "info");
+  return accept(`${session.supportLineName} está em preparação com ${train.id}.`, { projectedCost: cost });
+}
+
+function schedulePreventiveMaintenance(session, trainId) {
+  const train = getAllTrains(session).find((item) => item.id === trainId);
+  const cost = 2_200_00;
+  if (!train || !train.visible) return reject("Esse trem não está disponível para manutenção preventiva.");
+  if (train.faultActive) return reject("Resolva a falha ativa antes de programar a manutenção preventiva.");
+  if (train.status === "MAINTENANCE") return reject("Esse trem já está na janela de manutenção.");
+  if (train.condition >= 92) return reject("A condição do trem está boa; não há manutenção preventiva recomendada.");
+  if (session.staff.maintenanceAvailable < 1) return reject("A equipe de manutenção está ocupada em outra ocorrência.");
+  if (session.balanceCents < cost) return reject("Saldo insuficiente para programar a manutenção preventiva.");
+  session.staff.maintenanceAvailable -= 1;
+  session.balanceCents -= cost;
+  session.operatingCostCents += cost;
+  train.status = "MAINTENANCE";
+  train.maintenanceRemaining = 26;
+  train.delaySec = Math.max(0, train.delaySec - 8);
+  session.missions.preventiveMaintenance = true;
+  session.xp += 18;
+  pushLog(session, `${train.id}: manutenção preventiva iniciada. Retorno previsto em 26 s de simulação.`, "info");
+  return accept(`${train.id} entrou em manutenção preventiva; condição será restaurada.`, { projectedCost: cost });
 }
 
 function assignMaintenance(session, incidentId) {
@@ -412,6 +541,44 @@ function approveExpansion(session, projectId) {
   return accept("Expansão aprovada. A obra já está em andamento e será refletida na capacidade da estação.", { projectedCost: project.costCents });
 }
 
+function activateGreenEnergy(session) {
+  const cost = 8_400_00;
+  if (session.policies.greenEnergy) return reject("O programa de energia eficiente já está ativo nesta carreira.");
+  if (session.balanceCents < cost) return reject("Saldo insuficiente para modernizar a matriz energética.");
+  session.policies.greenEnergy = true;
+  session.balanceCents -= cost;
+  session.operatingCostCents += cost;
+  session.reputation = Math.min(100, session.reputation + 3);
+  session.missions.greenEnergy = true;
+  session.xp += 14;
+  pushLog(session, "Política aprovada: energia eficiente reduz o custo operacional recorrente.", "info");
+  return accept("Programa de energia eficiente ativado; custo por segundo reduzido.", { projectedCost: cost });
+}
+
+function setSocialFare(session) {
+  if (session.policies.farePlan === "social") return reject("A tarifa social já está ativa nesta carreira.");
+  session.policies.farePlan = "social";
+  session.reputation = Math.min(100, session.reputation + 4);
+  session.missions.socialFare = true;
+  session.xp += 10;
+  pushLog(session, "Política aprovada: tarifa social aumenta o acesso e reduz a receita por embarque.", "info");
+  return accept("Tarifa social ativada; reputação sobe e receita unitária é reduzida.");
+}
+
+function activatePeakService(session) {
+  const cost = 3_600_00;
+  if (session.policies.peakBoostRemaining > 0) return reject("O reforço de pico já está em operação neste turno.");
+  if (session.balanceCents < cost) return reject("Saldo insuficiente para reforçar o pico de demanda.");
+  session.policies.peakBoostRemaining = 150;
+  session.policies.peakServiceDeployed = true;
+  session.balanceCents -= cost;
+  session.operatingCostCents += cost;
+  session.missions.peakService = true;
+  session.xp += 16;
+  pushLog(session, "Reforço de pico ativado: embarque acelerado durante 150 s de simulação.", "info");
+  return accept("Reforço de pico ativado por 150 s de simulação.", { projectedCost: cost });
+}
+
 function completeTurn(session) {
   if (session.mode !== "career") return reject("O sandbox não registra progressão de carreira.");
   if (session.turn.status === "complete") return reject("Este turno já foi encerrado.");
@@ -421,7 +588,10 @@ function completeTurn(session) {
   }
   const activeIncidents = getActiveIncidents(session);
   const criticalOpen = activeIncidents.some((incident) => incident.severity === "critical");
-  const score = Math.max(0, Math.min(100, session.metrics.onTime + (criticalOpen ? -15 : 4) + (activeIncidents.length === 0 ? 6 : 0)));
+  const strategicBonus = (session.network.supportLineStatus === "operating" ? 2 : 0)
+    + (session.policies.greenEnergy ? 2 : 0)
+    + (session.missions.peakService ? 1 : 0);
+  const score = Math.max(0, Math.min(100, session.metrics.onTime + (criticalOpen ? -15 : 4) + (activeIncidents.length === 0 ? 6 : 0) + strategicBonus));
   const grade = score >= 94 ? "A" : score >= 84 ? "B" : score >= 74 ? "C" : "D";
   const rewardCents = { A: 16_000_00, B: 10_000_00, C: 5_000_00, D: 0 }[grade];
   const xpReward = { A: 35, B: 24, C: 12, D: 4 }[grade];
@@ -436,6 +606,10 @@ function completeTurn(session) {
   session.career.completedProjectIds = Object.values(session.projects)
     .filter((project) => project.status === "complete")
     .map((project) => project.id);
+  session.career.policyState = {
+    farePlan: session.policies.farePlan,
+    greenEnergy: session.policies.greenEnergy
+  };
   session.turn.status = "complete";
   session.turn.summary = {
     grade,
@@ -456,7 +630,9 @@ export function tickSession(session, seconds = 1) {
     session.time += 1;
     addPassengerDemand(session);
     getVisibleTrains(session).forEach((train) => advanceTrain(session, train));
-    session.operatingCostCents += 210;
+    session.operatingCostCents += session.policies.greenEnergy ? 160 : 210;
+    updateFleetCondition(session);
+    updatePolicies(session);
     updateIncidents(session);
     updateProjects(session);
     recalculate(session);
@@ -468,13 +644,26 @@ function addPassengerDemand(session) {
   for (const station of session.stations) {
     const wave = Math.sin((session.time + station.x * 900) / 97) * 0.21;
     const multiplier = station.id === "riverside" ? 1.25 : 1;
-    const added = Math.max(0, Math.floor((station.demand + wave) * multiplier));
+    const farePressure = session.policies.farePlan === "social" ? 1.08 : 1;
+    const added = Math.max(0, Math.floor((station.demand + wave) * multiplier * farePressure));
     station.queue += added;
     station.arrivals += added;
   }
 }
 
 function advanceTrain(session, train) {
+  if (train.status === "MAINTENANCE") {
+    train.maintenanceRemaining -= 1;
+    if (train.maintenanceRemaining <= 0) {
+      train.maintenanceRemaining = 0;
+      train.condition = 98;
+      train.status = "DWELLING";
+      train.dwellRemaining = 7;
+      session.staff.maintenanceAvailable += 1;
+      pushLog(session, `${train.id}: manutenção preventiva concluída; condição restaurada para 98%.`, "info");
+    }
+    return;
+  }
   if (train.status === "DISPATCHING") {
     train.dispatchRemaining -= 1;
     if (train.dispatchRemaining <= 0) {
@@ -482,7 +671,9 @@ function advanceTrain(session, train) {
       train.dwellRemaining = 8;
       train.segmentIndex = 0;
       train.progress = 0;
-      pushLog(session, `${train.id}: entrou na Linha Vale pelo Pátio Vale.`, "info");
+      if (train.line === "SUPORTE") session.network.supportLineStatus = "operating";
+      const line = train.line === "SUPORTE" ? session.supportLineName : session.lineName;
+      pushLog(session, `${train.id}: entrou em serviço na ${line}.`, "info");
     }
     return;
   }
@@ -521,17 +712,39 @@ function advanceTrain(session, train) {
   const station = getStation(session, getTrainOrigin(train));
   const alighting = Math.min(train.occupancy, 18 + ((session.time + train.segmentIndex * 13) % 17));
   train.occupancy -= alighting;
-  const boarding = Math.min(train.capacity - train.occupancy, station.queue, 24 + ((session.time + train.segmentIndex * 7) % 14));
+  const boardingBase = session.policies.peakBoostRemaining > 0 ? 36 : 24;
+  const boarding = Math.min(train.capacity - train.occupancy, station.queue, boardingBase + ((session.time + train.segmentIndex * 7) % 14));
   train.occupancy += boarding;
   station.queue -= boarding;
   station.departures += boarding;
-  session.revenueCents += boarding * 260;
-  session.balanceCents += boarding * 260;
+  const fareCents = session.policies.farePlan === "social" ? 220 : 260;
+  session.revenueCents += boarding * fareCents;
+  session.balanceCents += boarding * fareCents;
   train.status = train.holdRequested ? "HELD" : "DWELLING";
   train.dwellRemaining = train.status === "HELD" ? 0 : 9;
   if (train.status === "HELD") {
     train.holdRequested = false;
     pushLog(session, `${train.id}: retido em ${station.name}; a ordem alterou o intervalo da linha.`, "warning");
+  }
+}
+
+function updateFleetCondition(session) {
+  if (session.time % 60 !== 0) return;
+  for (const train of getVisibleTrains(session)) {
+    if (train.status === "MAINTENANCE" || train.status === "DEPOT_READY") continue;
+    train.condition = Math.max(40, train.condition - (train.line === "SUPORTE" ? 2 : 1));
+    if (train.condition < 65) {
+      train.delaySec += 5;
+      pushLog(session, `${train.id}: condição de frota baixa (${train.condition}%). Risco de atraso aumentado.`, "warning");
+    }
+  }
+}
+
+function updatePolicies(session) {
+  if (session.policies.peakBoostRemaining <= 0) return;
+  session.policies.peakBoostRemaining -= 1;
+  if (session.policies.peakBoostRemaining === 0) {
+    pushLog(session, "Reforço de pico encerrado; o embarque retornou ao ritmo padrão.", "info");
   }
 }
 
@@ -670,12 +883,14 @@ function recalculate(session) {
   const critical = session.stations.reduce((highest, station) => (station.queue > highest.queue ? station : highest));
   const active = getVisibleTrains(session).filter((train) => train.status !== "DEPOT_READY");
   const averageDelay = active.reduce((sum, train) => sum + train.delaySec, 0) / Math.max(active.length, 1);
+  const activeLines = new Set(active.filter((train) => train.line !== "RESERVA").map((train) => train.line)).size || 1;
   session.metrics = {
     totalQueue: session.stations.reduce((sum, station) => sum + station.queue, 0),
     criticalStationId: critical.id,
     criticalQueue: critical.queue,
     onTime: Math.max(72, Math.min(100, Math.round(99 - averageDelay / 5 - Math.max(0, critical.queue - critical.capacity) / 14))),
-    activeTrains: active.length
+    activeTrains: active.length,
+    activeLines
   };
 }
 

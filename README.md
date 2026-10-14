@@ -14,6 +14,9 @@ Vertical slice jogável do simulador operacional de metrôs **Vale Metro Control
 - Seleção de carreira entre **Vale Central**, **Porto Dourado** e **Serra Clara**; cada cidade altera nomes, linha, corredor, caixa inicial, demanda, capacidade e pressão das filas.
 - Perfil de carreira salvo por cidade, com dia, saldo, reputação, XP e total de turnos concluídos.
 - Turno de carreira com duração mínima, avaliação operacional, nota, recompensa, XP e relatório de encerramento antes do próximo dia.
+- Linha complementar ativável por turno, com VM-201 em rota expressa própria e impacto na avaliação estratégica.
+- Condição individual da frota, desgaste operacional e manutenção preventiva com janela de serviço, custo e retorno de condição.
+- Conselho metropolitano com reforço de pico, energia eficiente e tarifa social; cada política altera custo, receita, demanda ou reputação e as escolhas permanentes seguem na carreira.
 - Alerta dinâmico de lotação, registro de eventos e tutorial inicial por objetivos.
 - Pontualidade, fila crítica, saldo e XP calculados a partir do estado da sessão.
 - Salvamento local com IndexedDB e fallback de navegador.
@@ -36,14 +39,18 @@ npm test
 npm run check
 ```
 
-## Entrega integrada — Fases 2, 3 e 4
+## Plano de lotes — 9 no total
 
-Esta versão reúne o pedido de acelerar as próximas fases em uma entrega funcional:
+1. **Lote 1 — núcleo operacional:** mapa, trens, filas, tempo e comandos básicos. Entregue.
+2. **Lote 2 — cidades e economia:** escolha de cidade, caixa e rede próprias. Entregue.
+3. **Lote 3 — incidentes e expansão:** manutenção corretiva, sinal, passageiros e obra urbana. Entregue.
+4. **Lote 4 — ciclo de carreira:** nota, recompensas, avanço de dia e persistência. Entregue.
+5. **Lote 5 — rede ampliada:** linha complementar ativável e nova rota expressa. Entregue.
+6. **Lote 6 — gestão de frota:** condição, desgaste e manutenção preventiva. Entregue.
+7. **Lote 7 — políticas urbanas:** pico, energia e tarifa com consequências na operação. Entregue.
+8. **Lote 8 — campanha e conteúdo:** cenários por cidade, equipes, contratos e objetivos de longo prazo.
+9. **Lote 9 — acabamento e lançamento:** acessibilidade refinada, áudio, balanceamento, PWA, desempenho e preparação de lançamento.
 
-1. **Fase 2 — cidades e economia:** seleção de cidade, redes com características próprias e caixa de carreira separado.
-2. **Fase 3 — decisão operacional:** manutenção, falha de sinal, orientação de passageiros, trem reserva e expansão urbana orçada.
-3. **Fase 4 — ciclo de carreira:** fechamento de turno, nota, recompensa, XP, reputação, avanço de dia, salvamento local e testes do motor.
-
-Evoluções futuras podem ampliar o conteúdo com novas linhas por cidade, equipes, frota, políticas, áudio, acessibilidade avançada, PWA e uma campanha de longo prazo.
+Restam os lotes 8 e 9 para concluir o escopo previsto.
 
 As imagens conceituais são empregadas apenas como identidade e ambientação. A operação no mapa é produzida pela simulação do jogo.
