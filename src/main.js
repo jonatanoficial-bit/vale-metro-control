@@ -12,7 +12,7 @@ import {
   getVisibleTrains,
   normalizeSession,
   tickSession
-} from "./simulation.js";
+} from "./simulation.js?v=3";
 
 const els = {
   landing: document.querySelector("#landing-screen"),
@@ -20,6 +20,11 @@ const els = {
   cityOptions: document.querySelector("#city-options"),
   backToLanding: document.querySelector("#back-to-landing"),
   game: document.querySelector("#game-screen"),
+  centralView: document.querySelector("#central-view"),
+  networkView: document.querySelector("#network-view"),
+  detailScreen: document.querySelector("#game-detail-screen"),
+  navigation: document.querySelector(".game-navigation"),
+  networkOverview: document.querySelector("#network-overview"),
   canvas: document.querySelector("#network-canvas"),
   clock: document.querySelector("#clock-value"),
   punctuality: document.querySelector("#punctuality-value"),
@@ -56,7 +61,13 @@ const els = {
   returnToCities: document.querySelector("#return-to-cities"),
   live: document.querySelector("#live-region"),
   continueMessage: document.querySelector("#continue-message"),
-  resumeSaved: document.querySelector("#resume-saved")
+  resumeSaved: document.querySelector("#resume-saved"),
+  tutorialCoach: document.querySelector("#tutorial-coach"),
+  tutorialOverlay: document.querySelector("#tutorial-overlay"),
+  tutorialTitle: document.querySelector("#tutorial-title"),
+  tutorialCopy: document.querySelector("#tutorial-copy"),
+  tutorialPrimary: document.querySelector("#tutorial-primary"),
+  tutorialSkip: document.querySelector("#tutorial-skip")
 };
 
 let session;
@@ -66,6 +77,7 @@ let saveTimer;
 let commandSequence = 0;
 let careerProfiles = {};
 let audioContext;
+let activeGameView = "central";
 
 const accessibilityStorageKey = "vale-metro-control-accessibility";
 let accessibility = loadAccessibilityPreferences();
@@ -88,6 +100,10 @@ async function init() {
   });
   document.querySelectorAll("[data-time]").forEach((button) => {
     button.addEventListener("click", () => setTimeScale(Number(button.dataset.time)));
+  });
+  els.navigation.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-game-view]");
+    if (button) setGameView(button.dataset.gameView);
   });
   els.dispatchReserve.addEventListener("click", () => runCommand({ type: "DISPATCH_RESERVE" }));
   els.activateSupportLine.addEventListener("click", () => runCommand({ type: "ACTIVATE_SUPPORT_LINE" }));
@@ -128,6 +144,20 @@ async function init() {
     els.turnSummary.hidden = true;
     showLanding();
     openCitySelection();
+  });
+  els.tutorialPrimary.addEventListener("click", handleTutorialPrimary);
+  els.tutorialSkip.addEventListener("click", () => {
+    if (!session?.tutorial) return;
+    session.tutorial.status = "skipped";
+    session.tutorial.promptOpen = false;
+    announce("Orientação pausada. Camila ficará disponível durante este turno.");
+    render();
+    scheduleSave();
+  });
+  els.tutorialCoach.addEventListener("click", () => {
+    if (!session?.tutorial || session.tutorial.status !== "active") return;
+    session.tutorial.promptOpen = true;
+    renderTutorial();
   });
   els.canvas.addEventListener("click", selectFromMap);
   window.addEventListener("resize", renderMap);
@@ -184,6 +214,7 @@ async function startGame(mode, cityId = "vale-central", careerProfile = null) {
   els.citySelection.hidden = true;
   els.turnSummary.hidden = true;
   els.game.hidden = false;
+  setGameView("central");
   setTimeScale(session.timeScale || 1);
   render();
   window.clearInterval(simTimer);
@@ -207,6 +238,7 @@ async function continueSavedSession() {
   els.citySelection.hidden = true;
   els.turnSummary.hidden = true;
   els.game.hidden = false;
+  setGameView("central");
   setTimeScale(session.timeScale || 1);
   render();
   if (!simTimer) simTimer = window.setInterval(() => {
@@ -215,6 +247,50 @@ async function continueSavedSession() {
     render();
     scheduleSave();
   }, 1000);
+}
+
+function setGameView(view) {
+  if (!['central', 'network', 'missions', 'career'].includes(view)) return;
+  activeGameView = view;
+  els.centralView.hidden = view !== 'central';
+  els.networkView.hidden = view !== 'network';
+  const showDetails = view === 'missions' || view === 'career';
+  els.detailScreen.hidden = !showDetails;
+  els.detailScreen.querySelectorAll('[data-game-panel]').forEach((panel) => {
+    panel.hidden = panel.dataset.gamePanel !== view;
+  });
+  els.navigation.querySelectorAll('[data-game-view]').forEach((button) => {
+    const active = button.dataset.gameView === view;
+    button.classList.toggle('active', active);
+    if (active) button.setAttribute('aria-current', 'page');
+    else button.removeAttribute('aria-current');
+  });
+  if (session) {
+    renderTutorial();
+    if (view === 'network') renderNetworkOverview();
+    if (view === 'central') window.requestAnimationFrame(renderMap);
+  }
+}
+
+function handleTutorialPrimary() {
+  if (!session?.tutorial) return;
+  const tutorial = session.tutorial;
+  if (tutorial.status === 'intro') {
+    tutorial.status = 'active';
+    tutorial.step = 1;
+    tutorial.promptOpen = false;
+    selected = { type: 'station', id: session.metrics.criticalStationId };
+    setGameView('central');
+    announce('Camila Rocha: comece pela leitura da rede.');
+  } else if (tutorial.status === 'active') {
+    tutorial.promptOpen = false;
+  } else if (tutorial.status === 'complete') {
+    tutorial.status = 'acknowledged';
+    tutorial.promptOpen = false;
+    announce('Certificação operacional registrada. Continue a campanha para desbloquear novas rotinas.');
+  }
+  render();
+  scheduleSave();
 }
 
 function setTimeScale(scale) {
@@ -251,7 +327,8 @@ async function completeCurrentTurn() {
       completedTurns: session.career.completedTurns,
       completedProjectIds: session.career.completedProjectIds,
       policyState: session.career.policyState,
-      campaignState: session.career.campaignState
+      campaignState: session.career.campaignState,
+      tutorialCompleted: session.career.tutorialCompleted
     };
     careerProfiles[session.cityId] = nextProfile;
     await saveStore.saveCareerProfiles(careerProfiles);
@@ -324,15 +401,92 @@ function render() {
   renderLog();
   renderPolicies();
   renderCampaign();
+  renderNetworkOverview();
+  renderTutorial();
   renderMap();
+}
+
+function renderNetworkOverview() {
+  if (!session) return;
+  const visibleTrains = getVisibleTrains(session);
+  const critical = getStation(session, session.metrics.criticalStationId);
+  const incidents = getActiveIncidents(session);
+  const trains = getAllTrains(session);
+  els.networkOverview.innerHTML = `<div class="network-status-grid">
+    <article><span>EM SERVIÇO</span><strong>${visibleTrains.length}</strong><small>${session.metrics.activeLines} corredor${session.metrics.activeLines === 1 ? "" : "es"} ativo${session.metrics.activeLines === 1 ? "" : "s"}</small></article>
+    <article><span>PONTUALIDADE</span><strong>${session.metrics.onTime}%</strong><small>${incidents.length ? `${incidents.length} ocorrência${incidents.length === 1 ? "" : "s"} em gestão` : "sem bloqueios ativos"}</small></article>
+    <article><span>PRESSÃO</span><strong>${critical.queue}</strong><small>${critical.name} · maior fila</small></article>
+  </div>
+  <div class="network-table-heading"><div><p class="eyebrow">COMPOSIÇÕES</p><h2>Frota em tempo real</h2></div><span>${session.lineName}</span></div>
+  <div class="network-train-list">${trains.map((train) => {
+    const occupancy = train.visible ? `${Math.round(train.occupancy / train.capacity * 100)}%` : "Pátio";
+    const warning = train.faultActive || ["HELD", "WAITING_SIGNAL", "MAINTENANCE"].includes(train.status);
+    return `<button class="network-train${warning ? " warning" : ""}" data-network-train="${train.id}">
+      <span class="service-dot"></span><strong>${train.id}</strong><span>${getTrainLineLabel(train)}</span><span>${getStatusText(train.status)}</span><b>${occupancy}</b>
+    </button>`;
+  }).join("")}</div>`;
+  els.networkOverview.querySelectorAll("[data-network-train]").forEach((button) => {
+    button.addEventListener("click", () => {
+      selected = { type: "train", id: button.dataset.networkTrain };
+      setGameView("central");
+      render();
+    });
+  });
+}
+
+function renderTutorial() {
+  if (!session?.tutorial) return;
+  const tutorial = session.tutorial;
+  const isIntro = tutorial.status === "intro";
+  const isComplete = tutorial.status === "complete";
+  const isActivePrompt = tutorial.status === "active" && tutorial.promptOpen;
+  const showOverlay = isIntro || isComplete || isActivePrompt;
+  els.tutorialOverlay.hidden = !showOverlay;
+
+  if (showOverlay) {
+    let title = "Bem-vindo à central";
+    let copy = "Eu sou Camila Rocha, supervisora de operações. Vamos construir uma rotina segura em dois passos curtos: ler a rede e preparar uma composição antes do pico.";
+    let primary = "Começar orientação";
+    if (tutorial.status === "active" && tutorial.step === 1) {
+      title = "Primeiro, leia a rede";
+      copy = "No painel da estação, use Analisar rede. Uma boa decisão de despacho começa com a leitura de filas, oferta e situação da via.";
+      primary = "Mostrar tarefa";
+    } else if (tutorial.status === "active" && tutorial.step === 2) {
+      title = "Agora, prepare a frota";
+      copy = "Selecione o VM-102 destacado na Central e agende a manutenção preventiva. A central valida a disponibilidade da equipe antes de transmitir a ordem.";
+      primary = "Mostrar VM-102";
+    } else if (isComplete) {
+      title = "Certificação operacional concluída";
+      copy = "Você leu a rede e abriu a manutenção preventiva no momento certo. A certificação foi registrada: +25 XP.";
+      primary = "Continuar operação";
+    }
+    els.tutorialTitle.textContent = title;
+    els.tutorialCopy.textContent = copy;
+    els.tutorialPrimary.textContent = primary;
+    els.tutorialSkip.hidden = !isIntro;
+    const completedSteps = isComplete ? 2 : tutorial.step >= 2 ? 1 : 0;
+    els.tutorialOverlay.querySelectorAll(".tutorial-progress i").forEach((step, index) => {
+      step.classList.toggle("done", index < completedSteps);
+    });
+  }
+
+  const showCoach = tutorial.status === "active" && activeGameView === "central";
+  els.tutorialCoach.hidden = !showCoach;
+  if (showCoach) {
+    const task = tutorial.step === 1
+      ? "Abra Analisar rede para confirmar a leitura operacional."
+      : "Selecione o VM-102 destacado e programe a manutenção preventiva.";
+    els.tutorialCoach.innerHTML = `<img src="./assets/camila-rocha-mentor.png" alt=""><div><span>Camila Rocha · supervisão</span><strong>Etapa ${Math.min(tutorial.step, 2)} de 2</strong><p>${task}</p></div><button class="text-button" type="button">Ver orientação</button>`;
+  }
 }
 
 function renderTrains() {
   els.trainList.innerHTML = getAllTrains(session).map((train) => {
     const selectedClass = selected?.type === "train" && selected.id === train.id ? " selected" : "";
+    const tutorialTarget = session.tutorial?.status === "active" && session.tutorial.step === 2 && train.id === "VM-102" ? " tutorial-target" : "";
     const warning = ["HELD", "WAITING_SIGNAL", "DISPATCHING"].includes(train.status) || train.faultActive ? " warning" : "";
     const occupancy = train.visible ? `${Math.round(train.occupancy / train.capacity * 100)}%` : "Pronto";
-    return `<button class="train-row${selectedClass}" data-select-train="${train.id}">
+    return `<button class="train-row${selectedClass}${tutorialTarget}" data-select-train="${train.id}">
       <i class="train-indicator${warning}"></i>
       <span><strong>${train.id}</strong><small>${getTrainLineLabel(train)} · ${getStatusText(train.status)}</small></span>
       <b>${occupancy}<small>${train.condition}%</small></b>
@@ -404,7 +558,7 @@ function renderContext() {
         ${project?.status === "complete" ? `<button class="button secondary" disabled>Expansão concluída</button>` : ""}
         <button class="button secondary" data-command="station-team" data-station="${station.id}" ${session.teamSupport.remaining > 0 ? "disabled" : ""}>${session.teamSupport.remaining > 0 ? `Equipe em campo · ${session.teamSupport.remaining}s` : `Mobilizar equipe · ${formatCurrency(1_200_00)}`}</button>
         <button class="button primary" data-command="reserve">Enviar trem reserva</button>
-        <button class="button secondary" data-command="observe">Analisar rede</button>
+        <button class="button secondary ${session.tutorial?.status === "active" && session.tutorial.step === 1 ? "tutorial-target" : ""}" data-command="observe">Analisar rede</button>
       </div>`;
   }
   els.context.querySelectorAll("[data-command]").forEach((button) => {

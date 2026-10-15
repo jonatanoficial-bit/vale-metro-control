@@ -1,4 +1,4 @@
-const CACHE_NAME = "vale-metro-control-v2";
+const CACHE_NAME = "vale-metro-control-v3";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -7,7 +7,8 @@ const APP_SHELL = [
   "./src/main.js",
   "./src/simulation.js",
   "./assets/vale-metro-control-logo.png",
-  "./assets/control-room-concept.png"
+  "./assets/control-room-concept.png",
+  "./assets/camila-rocha-mentor.png"
 ];
 
 self.addEventListener("install", (event) => {

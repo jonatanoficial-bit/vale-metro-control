@@ -46,7 +46,7 @@ npm test
 npm run check
 ```
 
-## Plano de lotes — 9 no total
+## Lotes originais — 9 concluídos
 
 1. **Lote 1 — núcleo operacional:** mapa, trens, filas, tempo e comandos básicos. Entregue.
 2. **Lote 2 — cidades e economia:** escolha de cidade, caixa e rede próprias. Entregue.
@@ -58,6 +58,18 @@ npm run check
 8. **Lote 8 — campanha e conteúdo:** cenários por cidade, equipes, contratos e objetivos de longo prazo. Entregue.
 9. **Lote 9 — acabamento e lançamento:** acessibilidade refinada, áudio, balanceamento, PWA, desempenho e preparação de lançamento. Entregue.
 
-Os **9 de 9 lotes** previstos foram concluídos neste escopo.
+Os **9 de 9 lotes** previstos no escopo inicial foram concluídos. A evolução abaixo é uma nova frente de produção, voltada à qualidade de experiência, apresentação e retenção.
+
+## Programa de evolução de experiência — 7 partes
+
+1. **Parte 1 — central mobile-first e orientação guiada:** navegação por áreas, telas menos congestionadas, painel de rede, mentora Camila Rocha, dois passos interativos e recompensa de certificação. Entregue neste build.
+2. **Parte 2 — fluxo de despacho realista:** mensagens por trem, confirmações de condutor, prioridades, autorização de via e histórico de comunicações.
+3. **Parte 3 — loop de carreira e retenção:** níveis de operador, especializações, desbloqueios, metas semanais e recompensas cosméticas/operacionais.
+4. **Parte 4 — experiência de frota e manutenção:** garagem, inspeções visuais, peças, escala de equipe e consequências persistentes.
+5. **Parte 5 — cenários vivos:** clima, eventos urbanos, demanda por horário e cadeias de incidentes com leitura clara de impacto.
+6. **Parte 6 — apresentação premium:** tipografia, áudio, transições, feedback tátil mobile, acessibilidade e performance para aparelhos intermediários.
+7. **Parte 7 — balanceamento e lançamento:** telemetria local, dificuldade, economia, testes de regressão e preparação de distribuição.
+
+Depois desta primeira entrega, **faltam 6 partes** desse novo programa.
 
 As imagens conceituais são empregadas apenas como identidade e ambientação. A operação no mapa é produzida pela simulação do jogo.

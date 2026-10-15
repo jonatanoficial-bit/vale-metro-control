@@ -122,7 +122,7 @@ export function createInitialSession(mode = "career", cityId = "vale-central", c
     if (station) station.capacity += projects.riversideExpansion.capacityGain;
   }
   const session = {
-    schemaVersion: 8,
+    schemaVersion: 9,
     mode,
     time: 6 * 3600,
     timeScale: 1,
@@ -178,6 +178,9 @@ export function createInitialSession(mode = "career", cityId = "vale-central", c
       supportLine: false, preventiveMaintenance: false, greenEnergy: false, socialFare: false, peakService: false,
       stationTeam: false, contract: false
     },
+    tutorial: careerProfile?.tutorialCompleted
+      ? { status: "acknowledged", step: 3, rewardGranted: true }
+      : { status: "intro", step: 0, rewardGranted: false },
     incidents: [],
     incidentHistory: [],
     staff: { maintenanceAvailable: 1, signalAvailable: 1, passengerGuides: 2, stationTeams: 2 },
@@ -206,6 +209,7 @@ export function createInitialSession(mode = "career", cityId = "vale-central", c
       completedProjectIds,
       policyState,
       campaignState: careerProfile?.campaignState ?? { chapterIndex: 0, completedContracts: [] },
+      tutorialCompleted: careerProfile?.tutorialCompleted ?? false,
       balanceCents
     } : null,
     turn: {
@@ -225,7 +229,7 @@ export function createInitialSession(mode = "career", cityId = "vale-central", c
 
 export function normalizeSession(session) {
   const city = getCityProfile(session.cityId || "vale-central");
-  session.schemaVersion = 8;
+  session.schemaVersion = 9;
   session.cityId ??= city.id;
   session.city ??= city.name;
   session.lineName ??= city.lineName;
@@ -267,10 +271,17 @@ export function normalizeSession(session) {
       completedProjectIds: [],
       policyState: {},
       campaignState: { chapterIndex: 0, completedContracts: [] },
+      tutorialCompleted: false,
       balanceCents: session.balanceCents,
       ...session.career
     };
   }
+  session.tutorial = {
+    status: session.career?.tutorialCompleted ? "acknowledged" : "intro",
+    step: 0,
+    rewardGranted: false,
+    ...session.tutorial
+  };
   const campaignState = session.career?.campaignState ?? { chapterIndex: 0, completedContracts: [] };
   session.campaign = normalizeCampaign(session.campaign, city, campaignState);
   session.turn = { status: "active", startedAt: 6 * 3600, minimumDuration: 300, summary: null, ...session.turn };
@@ -475,8 +486,31 @@ export function applyCommand(session, command) {
       result = reject("Comando desconhecido.");
   }
   if (result.accepted && command.id) session.commandIds.push(command.id);
+  if (result.accepted) advanceTutorial(session, command);
   recalculate(session);
   return result;
+}
+
+function advanceTutorial(session, command) {
+  const tutorial = session.tutorial;
+  if (!tutorial || tutorial.status !== "active") return;
+
+  if (tutorial.step === 1 && command.type === "OBSERVE_NETWORK") {
+    tutorial.step = 2;
+    pushLog(session, "Camila Rocha: leitura da rede confirmada. Agora localize o VM-102 para a manutenção preventiva.", "info");
+    return;
+  }
+
+  if (tutorial.step === 2 && command.type === "SCHEDULE_PREVENTIVE_MAINTENANCE" && command.trainId === "VM-102") {
+    tutorial.step = 3;
+    tutorial.status = "complete";
+    if (!tutorial.rewardGranted) {
+      tutorial.rewardGranted = true;
+      session.xp += 25;
+      if (session.career) session.career.tutorialCompleted = true;
+    }
+    pushLog(session, "Camila Rocha: procedimento concluído. +25 XP de certificação operacional.", "info");
+  }
 }
 
 function requestHold(session, trainId) {

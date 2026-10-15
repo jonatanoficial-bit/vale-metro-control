@@ -269,3 +269,26 @@ test("cada cidade aplica seu traçado operacional ao iniciar e retomar a carreir
   assert.notEqual(vale.stations.find((station) => station.id === "central").x, porto.stations.find((station) => station.id === "central").x);
   assert.equal(resumed.stations.find((station) => station.id === "central").x, 0.48);
 });
+
+test("a orientação de Camila guia leitura da rede e recompensa a manutenção do VM-102", () => {
+  const session = createInitialSession("career", "vale-central");
+  const initialXp = session.xp;
+  session.tutorial.status = "active";
+  session.tutorial.step = 1;
+
+  const observed = applyCommand(session, { id: "tutorial-observe", type: "OBSERVE_NETWORK" });
+  assert.equal(observed.accepted, true);
+  assert.equal(session.tutorial.step, 2);
+
+  const maintained = applyCommand(session, { id: "tutorial-maintenance", type: "SCHEDULE_PREVENTIVE_MAINTENANCE", trainId: "VM-102" });
+  assert.equal(maintained.accepted, true);
+  assert.equal(session.tutorial.status, "complete");
+  assert.equal(session.career.tutorialCompleted, true);
+  assert.equal(session.xp, initialXp + 5 + 18 + 25);
+});
+
+test("carreira que concluiu a orientação não recebe a introdução novamente", () => {
+  const session = createInitialSession("career", "vale-central", { tutorialCompleted: true });
+  assert.equal(session.tutorial.status, "acknowledged");
+  assert.equal(session.tutorial.rewardGranted, true);
+});

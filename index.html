@@ -8,7 +8,7 @@
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="apple-touch-icon" href="./assets/vale-metro-control-logo.png" />
     <title>Vale Metro Control</title>
-    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./styles.css?v=3" />
   </head>
   <body>
     <main id="app" class="app-shell">
@@ -68,6 +68,22 @@
           </div>
         </header>
 
+        <nav class="game-navigation" aria-label="Áreas da central operacional">
+          <button class="game-nav-button active" data-game-view="central" aria-current="page">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5h16v13H4zM8 5.5v13M4 10h16"/></svg><span>Central</span>
+          </button>
+          <button class="game-nav-button" data-game-view="network">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18 9 6l6 12 5-12M4 18h16M9 6h6"/><circle cx="4" cy="18" r="1.4"/><circle cx="9" cy="6" r="1.4"/><circle cx="15" cy="18" r="1.4"/><circle cx="20" cy="6" r="1.4"/></svg><span>Rede</span>
+          </button>
+          <button class="game-nav-button" data-game-view="missions">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.5h9l3 3v14H6zM9 13l2 2 4-5M15 3.5v4h4"/></svg><span>Missões</span>
+          </button>
+          <button class="game-nav-button" data-game-view="career">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 19 6v5c0 4.4-2.7 7.8-7 10-4.3-2.2-7-5.6-7-10V6zM8.5 12h7M12 8.5v7"/></svg><span>Carreira</span>
+          </button>
+        </nav>
+
+        <section id="central-view" class="game-view central-view">
         <div class="workspace">
           <aside class="left-rail panel">
             <div class="panel-heading">
@@ -104,19 +120,43 @@
 
           <aside id="context-panel" class="context-panel panel" aria-live="polite"></aside>
         </div>
+        </section>
 
-        <footer class="bottom-dock">
-          <section class="mission-card panel">
+        <section id="network-view" class="game-view network-view" hidden aria-labelledby="network-view-title">
+          <div class="screen-section-heading">
+            <div>
+              <p class="eyebrow">SITUAÇÃO DA REDE</p>
+              <h2 id="network-view-title">Painel de despacho</h2>
+            </div>
+            <p>Leitura operacional por corredor, frota e canal de coordenação.</p>
+          </div>
+          <div class="network-layout">
+            <section id="network-overview" class="panel network-overview" aria-live="polite"></section>
+            <aside class="panel dispatch-channel">
+              <p class="eyebrow">CANAL DE DESPACHO · OCC-01</p>
+              <h2>Protocolo de comunicação</h2>
+              <ol class="protocol-list">
+                <li><b>1</b><span><strong>Detectar</strong><small>O sistema apresenta somente ocorrências confirmadas.</small></span></li>
+                <li><b>2</b><span><strong>Validar</strong><small>A ordem é checada contra via, equipe e segurança operacional.</small></span></li>
+                <li><b>3</b><span><strong>Executar</strong><small>O trem confirma a ação e a rede registra o efeito.</small></span></li>
+              </ol>
+              <p class="dispatch-note">Comunicações individuais com condutores e rotinas avançadas entram na próxima etapa de produção.</p>
+            </aside>
+          </div>
+        </section>
+
+        <footer id="game-detail-screen" class="bottom-dock" hidden>
+          <section class="mission-card panel" data-game-panel="missions">
             <div class="panel-heading compact">
               <div>
-                <p class="eyebrow">TUTORIAL</p>
-                <h2 id="mission-title">Primeiro turno</h2>
+                <p class="eyebrow">OBJETIVOS DE TURNO</p>
+                <h2 id="mission-title">Prioridades operacionais</h2>
               </div>
               <span id="xp-value" class="xp">0 XP</span>
             </div>
             <ol id="mission-list" class="mission-list"></ol>
           </section>
-          <section class="campaign-card panel">
+          <section class="campaign-card panel" data-game-panel="career">
             <div class="panel-heading compact">
               <div>
                 <p class="eyebrow">CAMPANHA MUNICIPAL</p>
@@ -126,7 +166,7 @@
             </div>
             <div id="campaign-content" class="campaign-content" aria-label="Cenário de campanha e contrato atual"></div>
           </section>
-          <section class="alert-card panel">
+          <section class="alert-card panel" data-game-panel="missions">
             <div class="panel-heading compact">
               <div>
                 <p class="eyebrow">CENTRAL DE ALERTAS</p>
@@ -137,7 +177,7 @@
             <p id="alert-description">As filas e os intervalos são atualizados a cada segundo de simulação.</p>
             <div id="alert-actions" class="alert-actions" aria-label="Ações do alerta"></div>
           </section>
-          <section class="events-card panel">
+          <section class="events-card panel" data-game-panel="career">
             <div class="panel-heading compact">
               <div>
                 <p class="eyebrow">REGISTRO OPERACIONAL</p>
@@ -147,7 +187,7 @@
             </div>
             <ul id="event-log" class="event-log" aria-label="Eventos recentes"></ul>
           </section>
-          <section class="policy-card panel">
+          <section class="policy-card panel" data-game-panel="career">
             <div class="panel-heading compact">
               <div>
                 <p class="eyebrow">GESTÃO E POLÍTICAS</p>
@@ -158,6 +198,24 @@
             <div id="policy-list" class="policy-list" aria-label="Decisões estratégicas"></div>
           </section>
         </footer>
+
+        <aside id="tutorial-coach" class="tutorial-coach" hidden aria-live="polite"></aside>
+      </section>
+
+      <section id="tutorial-overlay" class="tutorial-overlay" hidden aria-modal="true" role="dialog" aria-labelledby="tutorial-title">
+        <div class="tutorial-dialog panel">
+          <img src="./assets/camila-rocha-mentor.png" alt="Camila Rocha, supervisora de operações do metrô" />
+          <div class="tutorial-dialog-copy">
+            <p class="eyebrow">ORIENTAÇÃO OPERACIONAL</p>
+            <h2 id="tutorial-title">Bem-vindo à central</h2>
+            <p id="tutorial-copy"></p>
+            <div class="tutorial-progress" aria-label="Progresso da orientação"><i></i><i></i></div>
+            <div class="tutorial-actions">
+              <button id="tutorial-primary" class="button primary">Começar orientação</button>
+              <button id="tutorial-skip" class="text-button">Pular por enquanto</button>
+            </div>
+          </div>
+        </div>
       </section>
 
       <section id="accessibility-panel" class="accessibility-panel panel" hidden aria-labelledby="accessibility-title">
@@ -191,6 +249,6 @@
 
       <p id="live-region" class="sr-only" aria-live="assertive"></p>
     </main>
-    <script type="module" src="./src/main.js"></script>
+    <script type="module" src="./src/main.js?v=3"></script>
   </body>
 </html>

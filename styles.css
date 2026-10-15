@@ -318,3 +318,160 @@ h2 { margin-bottom: 0; font-size: 1rem; }
   .bottom-dock { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; margin-top: 0.4rem; }
   .bottom-dock .panel { min-height: 0; padding: 0.55rem; }
 }
+
+/* Interaction shell: operational information is separated into deliberate screens. */
+.game-view[hidden], .bottom-dock[hidden], .bottom-dock [hidden], .tutorial-overlay[hidden], .tutorial-coach[hidden] { display: none !important; }
+
+.game-screen {
+  background:
+    linear-gradient(180deg, rgba(3, 10, 17, 0.91) 0%, rgba(4, 15, 25, 0.96) 60%, #03080e 100%),
+    url("./assets/control-room-concept.png") center top / cover fixed;
+}
+.topbar, .workspace, .bottom-dock, .game-navigation, .network-view { width: min(1800px, 100%); margin-inline: auto; }
+.brand-lockup, .vitals, .time-controls, .panel {
+  border-color: rgba(135, 166, 190, 0.22);
+  background: rgba(7, 18, 30, 0.9);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.2);
+}
+.button, .icon-button, .time-button, .text-button { border-radius: 0.45rem; }
+.button { font-weight: 750; letter-spacing: 0.01em; }
+.button.primary { border-color: #2383bd; background: #11669a; box-shadow: none; }
+.button.primary:hover { background: #1779b5; }
+.button.secondary { border-color: rgba(164, 190, 208, 0.34); background: rgba(13, 31, 46, 0.96); }
+.button.warn { border-color: #bc8a30; background: rgba(107, 66, 17, 0.68); }
+.button.danger { border-color: #bb5362; background: rgba(108, 27, 42, 0.74); }
+.eyebrow { color: #8eb5d0; letter-spacing: 0.11em; }
+
+.game-navigation {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.3rem;
+  margin-bottom: 0.75rem;
+  padding: 0.32rem;
+  border: 1px solid rgba(135, 166, 190, 0.2);
+  border-radius: 0.65rem;
+  background: rgba(5, 15, 25, 0.92);
+  backdrop-filter: blur(16px);
+}
+.game-nav-button {
+  display: inline-flex;
+  min-height: 3rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.48rem;
+  border: 1px solid transparent;
+  border-radius: 0.42rem;
+  background: transparent;
+  color: #a9c1d3;
+  cursor: pointer;
+  font-size: 0.76rem;
+  font-weight: 740;
+  transition: background 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+.game-nav-button:hover, .game-nav-button:focus-visible { border-color: rgba(75, 148, 193, 0.56); background: rgba(21, 55, 78, 0.62); outline: none; }
+.game-nav-button.active { border-color: rgba(80, 164, 215, 0.7); background: #123a56; color: #f5fbff; }
+.game-nav-button svg { width: 1.05rem; height: 1.05rem; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.55; }
+
+.network-view { min-height: min(63vh, 680px); }
+.screen-section-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 1rem; margin: 0.8rem 0; padding: 0.3rem 0.15rem; }
+.screen-section-heading h2 { margin: 0.2rem 0 0; font-size: clamp(1.3rem, 2vw, 1.8rem); }
+.screen-section-heading > p { max-width: 39ch; margin: 0; color: var(--muted); font-size: 0.78rem; line-height: 1.5; text-align: right; }
+.network-layout { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(270px, 0.8fr); gap: 0.75rem; }
+.network-overview, .dispatch-channel { min-height: 31rem; padding: 1rem; }
+.network-status-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.55rem; }
+.network-status-grid article { padding: 0.8rem; border: 1px solid rgba(128, 167, 192, 0.17); border-radius: 0.52rem; background: rgba(11, 31, 47, 0.72); }
+.network-status-grid span { display: block; color: #8ca9bc; font-size: 0.61rem; font-weight: 800; letter-spacing: 0.075em; }
+.network-status-grid strong { display: block; margin: 0.42rem 0 0.15rem; color: #f1f8fc; font-size: 1.45rem; font-variant-numeric: tabular-nums; }
+.network-status-grid small { color: #9fb3c1; font-size: 0.67rem; }
+.network-table-heading { display: flex; justify-content: space-between; align-items: flex-end; margin: 1.1rem 0 0.55rem; }
+.network-table-heading h2, .dispatch-channel h2 { margin: 0.18rem 0 0; font-size: 1rem; }
+.network-table-heading > span { color: #94bcd6; font-size: 0.69rem; }
+.network-train-list { display: grid; gap: 0.4rem; }
+.network-train { display: grid; grid-template-columns: 0.6rem minmax(4rem, 0.58fr) minmax(6rem, 1fr) minmax(5rem, 1fr) auto; align-items: center; gap: 0.55rem; width: 100%; padding: 0.68rem; border: 1px solid rgba(128, 167, 192, 0.16); border-radius: 0.46rem; background: rgba(4, 17, 28, 0.72); color: #cddce5; cursor: pointer; text-align: left; }
+.network-train:hover, .network-train:focus-visible { border-color: rgba(71, 167, 224, 0.74); background: rgba(16, 51, 74, 0.84); outline: none; }
+.network-train.warning { border-color: rgba(215, 164, 64, 0.38); }
+.network-train strong { color: #f3f8fb; font-size: 0.76rem; }
+.network-train > span:not(.service-dot), .network-train b { overflow: hidden; color: #91a9b9; font-size: 0.68rem; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.network-train b { color: #d8e7f0; text-align: right; }
+.service-dot { width: 0.48rem; height: 0.48rem; border-radius: 50%; background: #56be8a; }
+.network-train.warning .service-dot { background: #d5a443; }
+.protocol-list { display: grid; gap: 0.85rem; margin: 1.3rem 0; padding: 0; list-style: none; }
+.protocol-list li { display: grid; grid-template-columns: 1.6rem 1fr; gap: 0.65rem; align-items: start; }
+.protocol-list b { display: grid; width: 1.6rem; height: 1.6rem; place-items: center; border: 1px solid #3b789c; border-radius: 50%; color: #bee1f3; font-size: 0.7rem; }
+.protocol-list strong, .protocol-list small { display: block; }
+.protocol-list strong { color: #eaf3f8; font-size: 0.77rem; }
+.protocol-list small, .dispatch-note { margin-top: 0.16rem; color: var(--muted); font-size: 0.71rem; line-height: 1.48; }
+.dispatch-note { padding-top: 0.8rem; border-top: 1px solid rgba(128, 167, 192, 0.15); }
+
+.bottom-dock { grid-template-columns: repeat(3, minmax(0, 1fr)); width: min(1320px, 100%); }
+.bottom-dock .panel { min-height: 13rem; padding: 1rem; }
+.mission-card, .alert-card { grid-column: span 1; }
+.tutorial-target { position: relative; border-color: #d7ad5d !important; box-shadow: 0 0 0 2px rgba(215, 173, 93, 0.18), 0 0 1.35rem rgba(215, 173, 93, 0.2) !important; animation: tutorial-breathe 1.8s ease-in-out infinite; }
+@keyframes tutorial-breathe { 50% { box-shadow: 0 0 0 4px rgba(215, 173, 93, 0.08), 0 0 1.65rem rgba(215, 173, 93, 0.32); } }
+
+.tutorial-overlay { position: fixed; z-index: 50; inset: 0; display: grid; place-items: center; padding: 1rem; background: rgba(1, 7, 12, 0.76); backdrop-filter: blur(9px); }
+.tutorial-dialog { display: grid; grid-template-columns: minmax(10rem, 0.7fr) minmax(0, 1.3fr); width: min(760px, 100%); overflow: hidden; border-color: rgba(132, 182, 213, 0.42); background: #091724; box-shadow: 0 1.6rem 5rem rgba(0, 0, 0, 0.55); }
+.tutorial-dialog > img { width: 100%; height: 100%; min-height: 18rem; object-fit: cover; object-position: 52% center; filter: saturate(0.86) contrast(1.04); }
+.tutorial-dialog-copy { display: flex; flex-direction: column; padding: clamp(1.15rem, 3vw, 2.1rem); }
+.tutorial-dialog h2 { margin: 0.35rem 0 0; font-size: clamp(1.55rem, 4vw, 2.25rem); line-height: 1.1; }
+.tutorial-dialog-copy > p:not(.eyebrow) { margin: 0.85rem 0 0; color: #c7d7e1; font-size: 0.92rem; line-height: 1.65; }
+.tutorial-progress { display: flex; gap: 0.35rem; margin-top: 1.2rem; }
+.tutorial-progress i { width: 2.2rem; height: 0.22rem; border-radius: 999px; background: #284356; }
+.tutorial-progress i.done { background: #6db6df; }
+.tutorial-actions { display: flex; flex-wrap: wrap; gap: 0.7rem; align-items: center; margin-top: auto; padding-top: 1.35rem; }
+.tutorial-coach { position: fixed; z-index: 18; right: 1rem; bottom: 1rem; display: grid; grid-template-columns: 3.25rem minmax(0, 1fr) auto; align-items: center; gap: 0.65rem; width: min(465px, calc(100vw - 2rem)); padding: 0.55rem; border: 1px solid rgba(136, 179, 202, 0.35); border-radius: 0.65rem; background: rgba(6, 18, 28, 0.96); box-shadow: 0 1rem 2.6rem rgba(0, 0, 0, 0.4); }
+.tutorial-coach img { width: 3.25rem; height: 3.25rem; border-radius: 0.42rem; object-fit: cover; object-position: center top; }
+.tutorial-coach span, .tutorial-coach strong, .tutorial-coach p { display: block; }
+.tutorial-coach span { color: #8ebbd6; font-size: 0.61rem; font-weight: 700; }
+.tutorial-coach strong { margin-top: 0.12rem; color: #eff7fb; font-size: 0.73rem; }
+.tutorial-coach p { margin: 0.22rem 0 0; color: #b1c4d0; font-size: 0.68rem; line-height: 1.36; }
+.tutorial-coach .text-button { font-size: 0.65rem; white-space: nowrap; }
+
+@media (max-width: 760px) {
+  .game-navigation { position: sticky; z-index: 15; top: 0.35rem; margin-bottom: 0.5rem; padding: 0.26rem; }
+  .game-nav-button { min-height: 3.25rem; flex-direction: column; gap: 0.15rem; font-size: 0.61rem; }
+  .game-nav-button svg { width: 1.02rem; height: 1.02rem; }
+  .screen-section-heading { align-items: flex-start; flex-direction: column; gap: 0.25rem; margin: 0.5rem 0; }
+  .screen-section-heading > p { max-width: 48ch; text-align: left; }
+  .network-layout { grid-template-columns: 1fr; }
+  .network-overview, .dispatch-channel { min-height: 0; padding: 0.75rem; }
+  .network-status-grid { gap: 0.35rem; }
+  .network-status-grid article { padding: 0.55rem; }
+  .network-status-grid strong { font-size: 1.08rem; }
+  .network-status-grid small { font-size: 0.58rem; }
+  .network-train { grid-template-columns: 0.5rem minmax(3.4rem, 0.6fr) minmax(4.3rem, 1fr) auto; gap: 0.35rem; padding: 0.55rem; }
+  .network-train > span:nth-of-type(2) { display: none; }
+  .network-train > span:not(.service-dot), .network-train b { font-size: 0.58rem; }
+  .bottom-dock { grid-template-columns: 1fr; width: 100%; margin-top: 0.5rem; }
+  .bottom-dock .panel { min-height: 0; padding: 0.8rem; }
+  .workspace { gap: 0.5rem; }
+  .map-panel { order: 1; min-height: 22rem; }
+  .context-panel { order: 2; }
+  .left-rail { order: 3; }
+  .tutorial-dialog { grid-template-columns: 1fr; max-height: min(44rem, calc(100dvh - 2rem)); overflow: auto; }
+  .tutorial-dialog > img { height: 10rem; min-height: 10rem; object-position: center 28%; }
+  .tutorial-dialog-copy { min-height: 0; padding: 1.1rem; }
+  .tutorial-dialog-copy > p:not(.eyebrow) { font-size: 0.85rem; line-height: 1.5; }
+  .tutorial-actions .button { width: 100%; }
+  .tutorial-coach { right: 0.5rem; bottom: 0.5rem; width: calc(100vw - 1rem); grid-template-columns: 2.7rem minmax(0, 1fr) auto; }
+  .tutorial-coach img { width: 2.7rem; height: 2.7rem; }
+  .tutorial-coach p { font-size: 0.62rem; }
+}
+
+@media (max-height: 500px) and (orientation: landscape) {
+  .game-navigation { margin-bottom: 0.4rem; padding: 0.2rem; }
+  .game-nav-button { min-height: 2.45rem; flex-direction: row; font-size: 0.57rem; }
+  .game-nav-button svg { width: 0.8rem; height: 0.8rem; }
+  .network-view { min-height: 0; }
+  .network-layout { grid-template-columns: minmax(0, 1.5fr) minmax(220px, 0.8fr); }
+  .network-overview, .dispatch-channel { min-height: 18rem; padding: 0.55rem; }
+  .tutorial-dialog { grid-template-columns: 11rem 1fr; max-height: calc(100dvh - 1rem); }
+  .tutorial-dialog > img { min-height: 0; }
+  .tutorial-dialog-copy { padding: 0.8rem 1rem; }
+  .tutorial-dialog h2 { font-size: 1.25rem; }
+  .tutorial-dialog-copy > p:not(.eyebrow) { margin-top: 0.45rem; font-size: 0.7rem; line-height: 1.35; }
+  .tutorial-actions { margin-top: 0.65rem; padding-top: 0.6rem; }
+  .tutorial-coach { bottom: 0.35rem; right: 0.35rem; }
+}
+
+.reduced-motion .tutorial-target { animation: none; }
