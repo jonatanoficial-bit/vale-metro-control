@@ -12,7 +12,7 @@ import {
   getVisibleTrains,
   normalizeSession,
   tickSession
-} from "./simulation.js?v=3";
+} from "./simulation.js?v=4";
 
 const els = {
   landing: document.querySelector("#landing-screen"),
@@ -25,6 +25,7 @@ const els = {
   detailScreen: document.querySelector("#game-detail-screen"),
   navigation: document.querySelector(".game-navigation"),
   networkOverview: document.querySelector("#network-overview"),
+  dispatchFeed: document.querySelector("#dispatch-feed"),
   canvas: document.querySelector("#network-canvas"),
   clock: document.querySelector("#clock-value"),
   punctuality: document.querySelector("#punctuality-value"),
@@ -402,6 +403,7 @@ function render() {
   renderPolicies();
   renderCampaign();
   renderNetworkOverview();
+  renderDispatchFeed();
   renderTutorial();
   renderMap();
 }
@@ -421,8 +423,9 @@ function renderNetworkOverview() {
   <div class="network-train-list">${trains.map((train) => {
     const occupancy = train.visible ? `${Math.round(train.occupancy / train.capacity * 100)}%` : "Pátio";
     const warning = train.faultActive || ["HELD", "WAITING_SIGNAL", "MAINTENANCE"].includes(train.status);
+    const authority = getRouteAuthorizationLabel(train);
     return `<button class="network-train${warning ? " warning" : ""}" data-network-train="${train.id}">
-      <span class="service-dot"></span><strong>${train.id}</strong><span>${getTrainLineLabel(train)}</span><span>${getStatusText(train.status)}</span><b>${occupancy}</b>
+      <span class="service-dot"></span><strong>${train.id}</strong><span>${getTrainLineLabel(train)}</span><span>${getStatusText(train.status)} · ${authority}</span><b>${occupancy}</b>
     </button>`;
   }).join("")}</div>`;
   els.networkOverview.querySelectorAll("[data-network-train]").forEach((button) => {
@@ -432,6 +435,18 @@ function renderNetworkOverview() {
       render();
     });
   });
+}
+
+function renderDispatchFeed() {
+  if (!session?.dispatch) return;
+  const messages = session.dispatch.messages.slice(0, 6);
+  els.dispatchFeed.innerHTML = messages.map((message) => {
+    const route = message.direction === "outgoing" ? "OCC → trem" : message.direction === "incoming" ? "trem → OCC" : "sistema";
+    return `<article class="dispatch-message ${message.priority}">
+      <div><span>${formatTime(message.at)} · ${route}</span><strong>${message.from} <i>›</i> ${message.to}</strong></div>
+      <p>${message.text}</p>
+    </article>`;
+  }).join("");
 }
 
 function renderTutorial() {
@@ -514,6 +529,11 @@ function renderContext() {
     const incident = getActiveIncidents(session).find((item) => item.trainId === train.id);
     const incidentStatus = incident?.status === "responding" ? `Equipe a caminho · ${incident.responseRemaining}s` : "Falha de porta ativa";
     const maintenanceRecommended = train.condition < 92 && !incident && train.status !== "MAINTENANCE" && train.visible;
+    const routeStatus = getRouteAuthorizationLabel(train);
+    const routePending = train.dispatch.routeStatus === "awaiting-confirmation";
+    const routeAuthorized = train.dispatch.routeStatus === "authorized" && train.dispatch.authorizationRemaining > 0;
+    const canRequestRoute = train.visible && train.status === "DWELLING" && !routePending && !routeAuthorized;
+    const priorityActive = train.dispatch.priorityRemaining > 0;
     els.context.innerHTML = `<div class="panel-heading"><div><p class="eyebrow">TREM SELECIONADO</p><h2>${train.id}</h2></div><span class="status-pill ${train.status === "HELD" || incident ? "warning" : "good"}">${incident ? incidentStatus : getStatusText(train.status)}</span></div>
       <p class="context-copy">O comando é validado pelo motor e seus efeitos aparecem no mapa, na fila e no registro.</p>
       <ul class="key-value">
@@ -522,8 +542,18 @@ function renderContext() {
         <li><span>Condição da frota</span><strong>${train.condition}% ${train.condition < 70 ? "· atenção" : ""}</strong></li>
         <li><span>Atraso</span><strong>+${train.delaySec}s</strong></li>
         <li><span>Intervalo</span><strong>${session.metrics.onTime >= 93 ? "regular" : "sob pressão"}</strong></li>
+        <li><span>Via</span><strong>${routeStatus}</strong></li>
         ${incident ? `<li><span>Ocorrência</span><strong>${incident.type}</strong></li>` : ""}
       </ul>
+      <section class="dispatch-control">
+        <div><p class="eyebrow">DESPACHO DO TREM</p><strong>${priorityActive ? "Prioridade de recuperação ativa" : "Canal seguro com condutor"}</strong></div>
+        <p>${routePending ? `Aguardando confirmação do condutor · ${train.dispatch.acknowledgementRemaining}s` : routeAuthorized ? `Via confirmada por mais ${train.dispatch.authorizationRemaining}s.` : "Confirme estado, solicite via e só então aplique prioridade."}</p>
+        <div class="dispatch-actions">
+          <button class="button secondary" data-command="status" data-train="${train.id}" ${train.dispatch.statusCheckRemaining > 0 ? "disabled" : ""}>${train.dispatch.statusCheckRemaining > 0 ? "Consulta enviada" : "Solicitar status"}</button>
+          <button class="button primary" data-command="route" data-train="${train.id}" ${canRequestRoute ? "" : "disabled"}>${routePending ? "Aguardando condutor" : routeAuthorized ? "Via autorizada" : "Solicitar via"}</button>
+          <button class="button secondary" data-command="priority" data-train="${train.id}" ${routeAuthorized && !priorityActive ? "" : "disabled"}>${priorityActive ? `Prioridade · ${train.dispatch.priorityRemaining}s` : "Dar prioridade"}</button>
+        </div>
+      </section>
       <div class="action-stack">
         ${incident ? `<button class="button danger" data-command="maintenance" data-incident="${incident.id}" ${incident.status === "responding" ? "disabled" : ""}>${incident.status === "responding" ? "Equipe em resposta" : "Enviar manutenção"}</button>` : ""}
         ${maintenanceRecommended ? `<button class="button primary" data-command="preventive" data-train="${train.id}">Manutenção preventiva · ${formatCurrency(2_200_00)}</button>` : ""}
@@ -566,6 +596,9 @@ function renderContext() {
       const { command, train } = button.dataset;
       if (command === "hold") runCommand({ type: "HOLD_TRAIN", trainId: train });
       if (command === "release") runCommand({ type: "RELEASE_TRAIN", trainId: train });
+      if (command === "status") runCommand({ type: "REQUEST_STATUS_UPDATE", trainId: train });
+      if (command === "route") runCommand({ type: "REQUEST_ROUTE_AUTHORIZATION", trainId: train });
+      if (command === "priority") runCommand({ type: "SET_DISPATCH_PRIORITY", trainId: train });
       if (command === "reserve") runCommand({ type: "DISPATCH_RESERVE" });
       if (command === "observe") runCommand({ type: "OBSERVE_NETWORK" });
       if (command === "maintenance") runCommand({ type: "ASSIGN_MAINTENANCE", incidentId: button.dataset.incident });
@@ -715,6 +748,17 @@ function getTrainLineLabel(train) {
   if (train.line === "SUPORTE") return session.supportLineName;
   if (train.line === "RESERVA") return "Reserva";
   return session.lineName;
+}
+
+function getRouteAuthorizationLabel(train) {
+  const dispatch = train.dispatch;
+  if (!dispatch || dispatch.routeStatus === "not-requested") return "sem solicitação";
+  if (dispatch.routeStatus === "awaiting-confirmation") return "aguardando condutor";
+  if (dispatch.routeStatus === "authorized") return `autorizada · ${dispatch.authorizationRemaining}s`;
+  if (dispatch.routeStatus === "consumed") return "confirmada";
+  if (dispatch.routeStatus === "denied") return "negada";
+  if (dispatch.routeStatus === "expired") return "expirada";
+  return "sem solicitação";
 }
 
 function renderMap() {

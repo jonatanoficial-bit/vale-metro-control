@@ -8,7 +8,7 @@
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="apple-touch-icon" href="./assets/vale-metro-control-logo.png" />
     <title>Vale Metro Control</title>
-    <link rel="stylesheet" href="./styles.css?v=3" />
+    <link rel="stylesheet" href="./styles.css?v=4" />
   </head>
   <body>
     <main id="app" class="app-shell">
@@ -134,13 +134,14 @@
             <section id="network-overview" class="panel network-overview" aria-live="polite"></section>
             <aside class="panel dispatch-channel">
               <p class="eyebrow">CANAL DE DESPACHO · OCC-01</p>
-              <h2>Protocolo de comunicação</h2>
+              <h2>Comunicações operacionais</h2>
+              <div id="dispatch-feed" class="dispatch-feed" aria-label="Histórico de comunicações com a frota"></div>
               <ol class="protocol-list">
                 <li><b>1</b><span><strong>Detectar</strong><small>O sistema apresenta somente ocorrências confirmadas.</small></span></li>
                 <li><b>2</b><span><strong>Validar</strong><small>A ordem é checada contra via, equipe e segurança operacional.</small></span></li>
                 <li><b>3</b><span><strong>Executar</strong><small>O trem confirma a ação e a rede registra o efeito.</small></span></li>
               </ol>
-              <p class="dispatch-note">Comunicações individuais com condutores e rotinas avançadas entram na próxima etapa de produção.</p>
+              <p class="dispatch-note">Ordens são registradas, respondidas pelo condutor e só ganham prioridade depois da autorização de via.</p>
             </aside>
           </div>
         </section>
@@ -249,6 +250,6 @@
 
       <p id="live-region" class="sr-only" aria-live="assertive"></p>
     </main>
-    <script type="module" src="./src/main.js?v=3"></script>
+    <script type="module" src="./src/main.js?v=4"></script>
   </body>
 </html>

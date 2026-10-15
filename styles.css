@@ -395,6 +395,15 @@ h2 { margin-bottom: 0; font-size: 1rem; }
 .network-train b { color: #d8e7f0; text-align: right; }
 .service-dot { width: 0.48rem; height: 0.48rem; border-radius: 50%; background: #56be8a; }
 .network-train.warning .service-dot { background: #d5a443; }
+.dispatch-feed { display: grid; gap: 0.48rem; max-height: 16.9rem; margin: 0.85rem 0; overflow: auto; padding-right: 0.15rem; }
+.dispatch-message { padding: 0.62rem 0.65rem; border: 1px solid rgba(128, 167, 192, 0.18); border-left: 0.18rem solid #4d9bc2; border-radius: 0.4rem; background: rgba(5, 21, 33, 0.8); }
+.dispatch-message.priority { border-left-color: #d4a74e; }
+.dispatch-message.critical { border-left-color: #dc6072; background: rgba(79, 19, 31, 0.35); }
+.dispatch-message > div { display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem; }
+.dispatch-message span { color: #88a9bc; font-size: 0.56rem; font-variant-numeric: tabular-nums; }
+.dispatch-message strong { color: #e5f0f6; font-size: 0.67rem; white-space: nowrap; }
+.dispatch-message i { color: #79bde0; font-style: normal; }
+.dispatch-message p { margin: 0.38rem 0 0; color: #aec2d0; font-size: 0.67rem; line-height: 1.42; }
 .protocol-list { display: grid; gap: 0.85rem; margin: 1.3rem 0; padding: 0; list-style: none; }
 .protocol-list li { display: grid; grid-template-columns: 1.6rem 1fr; gap: 0.65rem; align-items: start; }
 .protocol-list b { display: grid; width: 1.6rem; height: 1.6rem; place-items: center; border: 1px solid #3b789c; border-radius: 50%; color: #bee1f3; font-size: 0.7rem; }
@@ -402,6 +411,12 @@ h2 { margin-bottom: 0; font-size: 1rem; }
 .protocol-list strong { color: #eaf3f8; font-size: 0.77rem; }
 .protocol-list small, .dispatch-note { margin-top: 0.16rem; color: var(--muted); font-size: 0.71rem; line-height: 1.48; }
 .dispatch-note { padding-top: 0.8rem; border-top: 1px solid rgba(128, 167, 192, 0.15); }
+.dispatch-control { margin: 0.85rem 0 0.75rem; padding: 0.72rem; border: 1px solid rgba(77, 147, 188, 0.3); border-radius: 0.48rem; background: rgba(7, 29, 45, 0.68); }
+.dispatch-control > div:first-child { display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem; }
+.dispatch-control > div:first-child strong { color: #d9edf8; font-size: 0.71rem; text-align: right; }
+.dispatch-control > p { margin: 0.38rem 0 0.6rem; color: #a8bfcc; font-size: 0.66rem; line-height: 1.42; }
+.dispatch-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.38rem; }
+.dispatch-actions .button { min-height: 2.55rem; padding: 0.36rem 0.35rem; font-size: 0.59rem; line-height: 1.16; }
 
 .bottom-dock { grid-template-columns: repeat(3, minmax(0, 1fr)); width: min(1320px, 100%); }
 .bottom-dock .panel { min-height: 13rem; padding: 1rem; }
@@ -442,6 +457,9 @@ h2 { margin-bottom: 0; font-size: 1rem; }
   .network-train { grid-template-columns: 0.5rem minmax(3.4rem, 0.6fr) minmax(4.3rem, 1fr) auto; gap: 0.35rem; padding: 0.55rem; }
   .network-train > span:nth-of-type(2) { display: none; }
   .network-train > span:not(.service-dot), .network-train b { font-size: 0.58rem; }
+  .dispatch-feed { max-height: none; }
+  .dispatch-actions { grid-template-columns: 1fr; }
+  .dispatch-actions .button { min-height: 2.7rem; font-size: 0.66rem; }
   .bottom-dock { grid-template-columns: 1fr; width: 100%; margin-top: 0.5rem; }
   .bottom-dock .panel { min-height: 0; padding: 0.8rem; }
   .workspace { gap: 0.5rem; }

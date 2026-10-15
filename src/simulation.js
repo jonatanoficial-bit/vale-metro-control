@@ -108,6 +108,22 @@ const statusText = {
   WAITING_SIGNAL: "Aguardando via"
 };
 
+function createTrainDispatchState() {
+  return {
+    routeStatus: "not-requested",
+    routeSegment: null,
+    acknowledgementRemaining: 0,
+    authorizationRemaining: 0,
+    statusCheckRemaining: 0,
+    priority: "normal",
+    priorityRemaining: 0
+  };
+}
+
+function createDispatchBoard() {
+  return { nextId: 1, messages: [] };
+}
+
 export function createInitialSession(mode = "career", cityId = "vale-central", careerProfile = null) {
   const city = getCityProfile(cityId);
   const balanceCents = mode === "sandbox" ? 999_999_00 : careerProfile?.balanceCents ?? city.startingBalanceCents;
@@ -122,7 +138,7 @@ export function createInitialSession(mode = "career", cityId = "vale-central", c
     if (station) station.capacity += projects.riversideExpansion.capacityGain;
   }
   const session = {
-    schemaVersion: 9,
+    schemaVersion: 10,
     mode,
     time: 6 * 3600,
     timeScale: 1,
@@ -145,6 +161,7 @@ export function createInitialSession(mode = "career", cityId = "vale-central", c
       holdRequested: false,
       line: "PRINCIPAL",
       maintenanceRemaining: 0,
+      dispatch: createTrainDispatchState(),
       visible: true
     })),
     supportTrain: {
@@ -154,6 +171,7 @@ export function createInitialSession(mode = "career", cityId = "vale-central", c
       line: "SUPORTE",
       dispatchRemaining: 0,
       maintenanceRemaining: 0,
+      dispatch: createTrainDispatchState(),
       holdRequested: false,
       visible: false
     },
@@ -170,13 +188,14 @@ export function createInitialSession(mode = "career", cityId = "vale-central", c
       line: "RESERVA",
       dispatchRemaining: 0,
       maintenanceRemaining: 0,
+      dispatch: createTrainDispatchState(),
       visible: false,
       holdRequested: false
     },
     missions: {
       observe: false, hold: false, reserve: false, maintenance: false, signal: false, passengers: false, expansion: false,
       supportLine: false, preventiveMaintenance: false, greenEnergy: false, socialFare: false, peakService: false,
-      stationTeam: false, contract: false
+      stationTeam: false, contract: false, routeAuthorization: false, dispatchPriority: false
     },
     tutorial: careerProfile?.tutorialCompleted
       ? { status: "acknowledged", step: 3, rewardGranted: true }
@@ -199,6 +218,7 @@ export function createInitialSession(mode = "career", cityId = "vale-central", c
     },
     passengerTransfers: 0,
     teamSupport: { stationId: null, remaining: 0 },
+    dispatch: createDispatchBoard(),
     campaign,
     projects,
     career: mode === "career" ? {
@@ -223,13 +243,20 @@ export function createInitialSession(mode = "career", cityId = "vale-central", c
     metrics: { totalQueue: 0, criticalStationId: "riverside", onTime: 100, activeTrains: 4, activeLines: 1 }
   };
   pushLog(session, `${mode === "career" ? `Dia ${session.career.day} da carreira em ${city.name}` : "Sandbox"}: rede em operação às 06:00.`, "info");
+  pushDispatchMessage(session, {
+    from: "OCC-01",
+    to: "REDE",
+    priority: "normal",
+    direction: "system",
+    text: "Turno iniciado. Todas as composições reportam prontidão operacional."
+  });
   recalculate(session);
   return normalizeSession(session);
 }
 
 export function normalizeSession(session) {
   const city = getCityProfile(session.cityId || "vale-central");
-  session.schemaVersion = 9;
+  session.schemaVersion = 10;
   session.cityId ??= city.id;
   session.city ??= city.name;
   session.lineName ??= city.lineName;
@@ -242,7 +269,7 @@ export function normalizeSession(session) {
   session.missions = {
     observe: false, hold: false, reserve: false, maintenance: false, signal: false, passengers: false, expansion: false,
     supportLine: false, preventiveMaintenance: false, greenEnergy: false, socialFare: false, peakService: false,
-    stationTeam: false, contract: false,
+    stationTeam: false, contract: false, routeAuthorization: false, dispatchPriority: false,
     ...session.missions
   };
   session.incidents ??= [];
@@ -259,6 +286,9 @@ export function normalizeSession(session) {
   session.policies = { farePlan: "balanced", greenEnergy: false, peakBoostRemaining: 0, peakServiceDeployed: false, ...session.policies };
   session.passengerTransfers ??= 0;
   session.teamSupport = { stationId: null, remaining: 0, ...session.teamSupport };
+  session.dispatch = { ...createDispatchBoard(), ...session.dispatch };
+  session.dispatch.messages ??= [];
+  session.dispatch.nextId ??= 1;
   const expansionStationName = session.stations?.find((station) => station.id === "riverside")?.name || "Riverside";
   session.projects = { riversideExpansion: createRiversideExpansionProject(expansionStationName), ...session.projects };
   session.projects.riversideExpansion = { ...createRiversideExpansionProject(expansionStationName), ...session.projects.riversideExpansion };
@@ -293,6 +323,7 @@ export function normalizeSession(session) {
     line: "SUPORTE",
     dispatchRemaining: 0,
     maintenanceRemaining: 0,
+    dispatch: createTrainDispatchState(),
     holdRequested: false,
     visible: false
   };
@@ -301,7 +332,17 @@ export function normalizeSession(session) {
     train.condition ??= 88;
     train.maintenanceRemaining ??= 0;
     train.line ??= train.id === "VM-201" ? "SUPORTE" : train.id === "VM-R01" ? "RESERVA" : "PRINCIPAL";
+    train.dispatch = { ...createTrainDispatchState(), ...train.dispatch };
   });
+  if (session.dispatch.messages.length === 0) {
+    pushDispatchMessage(session, {
+      from: "OCC-01",
+      to: "REDE",
+      priority: "normal",
+      direction: "system",
+      text: "Canal de despacho sincronizado com a sessão atual."
+    });
+  }
   const activeLineCount = new Set(getVisibleTrains(session)
     .filter((train) => train.line !== "RESERVA")
     .map((train) => train.line)).size || 1;
@@ -440,6 +481,15 @@ export function applyCommand(session, command) {
     case "RELEASE_TRAIN":
       result = releaseTrain(session, command.trainId);
       break;
+    case "REQUEST_STATUS_UPDATE":
+      result = requestStatusUpdate(session, command.trainId);
+      break;
+    case "REQUEST_ROUTE_AUTHORIZATION":
+      result = requestRouteAuthorization(session, command.trainId);
+      break;
+    case "SET_DISPATCH_PRIORITY":
+      result = setDispatchPriority(session, command.trainId);
+      break;
     case "DISPATCH_RESERVE":
       result = dispatchReserve(session);
       break;
@@ -521,6 +571,14 @@ function requestHold(session, trainId) {
   train.holdRequested = true;
   session.missions.hold = true;
   session.xp += 10;
+  pushDispatchMessage(session, {
+    from: "OCC-01",
+    to: train.id,
+    trainId: train.id,
+    priority: "priority",
+    direction: "outgoing",
+    text: "Reter no próximo ponto seguro para regularizar intervalo. Confirme ao imobilizar."
+  });
   pushLog(session, `${train.id}: retenção solicitada no próximo ponto seguro.`, "warning");
   return accept(`${train.id} receberá retenção ao alcançar a próxima estação.`, { trainId });
 }
@@ -531,8 +589,77 @@ function releaseTrain(session, trainId) {
   train.status = "DWELLING";
   train.dwellRemaining = 4;
   train.holdRequested = false;
+  pushDispatchMessage(session, {
+    from: "OCC-01",
+    to: train.id,
+    trainId: train.id,
+    priority: "normal",
+    direction: "outgoing",
+    text: "Liberação confirmada. Retome a sequência conforme sinalização."
+  });
   pushLog(session, `${train.id}: liberação confirmada. Partida em preparação.`, "info");
   return accept(`${train.id} voltará à sequência da Linha Vale.`, { trainId });
+}
+
+function requestStatusUpdate(session, trainId) {
+  const train = getAllTrains(session).find((item) => item.id === trainId);
+  if (!train || !train.visible) return reject("A composição selecionada não está disponível para despacho.");
+  if (train.dispatch.statusCheckRemaining > 0) return reject("A consulta de status já aguarda resposta do condutor.");
+  train.dispatch.statusCheckRemaining = 2;
+  pushDispatchMessage(session, {
+    from: "OCC-01",
+    to: train.id,
+    trainId: train.id,
+    priority: "normal",
+    direction: "outgoing",
+    text: "Solicite condição operacional e confirmação de próximo ponto."
+  });
+  return accept(`Consulta de status enviada a ${train.id}.`, { trainId });
+}
+
+function requestRouteAuthorization(session, trainId) {
+  const train = getAllTrains(session).find((item) => item.id === trainId);
+  if (!train || !train.visible) return reject("A composição selecionada não está disponível para despacho.");
+  if (train.status !== "DWELLING") return reject("A autorização de via só pode ser solicitada enquanto o trem está em plataforma.");
+  if (train.dispatch.routeStatus === "awaiting-confirmation") return reject("A solicitação de via já foi enviada e aguarda o condutor.");
+  if (train.dispatch.routeStatus === "authorized" && train.dispatch.authorizationRemaining > 0) return reject("A autorização atual ainda está válida.");
+  const segment = getSegmentKey(train, train.segmentIndex);
+  if (isSegmentBlocked(session, train, train.segmentIndex)) return reject("O trecho seguinte está bloqueado; nenhuma autorização segura pode ser emitida.");
+  train.dispatch.routeStatus = "awaiting-confirmation";
+  train.dispatch.routeSegment = segment;
+  train.dispatch.acknowledgementRemaining = 4;
+  pushDispatchMessage(session, {
+    from: "OCC-01",
+    to: train.id,
+    trainId: train.id,
+    priority: "priority",
+    direction: "outgoing",
+    text: `Autorização solicitada para o trecho ${getStation(session, getTrainOrigin(train)).name}–${getStation(session, getTrainTarget(train)).name}. Confirme prontidão.`
+  });
+  return accept(`Solicitação de autorização transmitida para ${train.id}.`, { trainId, segment });
+}
+
+function setDispatchPriority(session, trainId) {
+  const train = getAllTrains(session).find((item) => item.id === trainId);
+  if (!train || !train.visible) return reject("A composição selecionada não está disponível para despacho.");
+  if (train.dispatch.routeStatus !== "authorized" || train.dispatch.authorizationRemaining <= 0) {
+    return reject("Confirme uma autorização de via antes de aplicar prioridade de recuperação.");
+  }
+  if (train.dispatch.priorityRemaining > 0) return reject("A prioridade de recuperação já está ativa para essa composição.");
+  train.dispatch.priority = "recovery";
+  train.dispatch.priorityRemaining = 70;
+  train.delaySec = Math.max(0, train.delaySec - 8);
+  session.missions.dispatchPriority = true;
+  session.xp += 8;
+  pushDispatchMessage(session, {
+    from: "OCC-01",
+    to: train.id,
+    trainId: train.id,
+    priority: "priority",
+    direction: "outgoing",
+    text: "Prioridade de recuperação autorizada. Preserve margem de segurança e reporte qualquer restrição."
+  });
+  return accept(`${train.id} recebeu prioridade de recuperação por 70 s de simulação.`, { trainId });
 }
 
 function dispatchReserve(session) {
@@ -812,6 +939,7 @@ export function tickSession(session, seconds = 1) {
   normalizeSession(session);
   for (let tick = 0; tick < seconds; tick += 1) {
     session.time += 1;
+    updateDispatch(session);
     addPassengerDemand(session);
     getVisibleTrains(session).forEach((train) => advanceTrain(session, train));
     session.operatingCostCents += session.policies.greenEnergy ? 160 : 210;
@@ -823,6 +951,93 @@ export function tickSession(session, seconds = 1) {
     recalculate(session);
   }
   return session;
+}
+
+function updateDispatch(session) {
+  for (const train of getAllTrains(session)) {
+    const dispatch = train.dispatch;
+    if (!dispatch) continue;
+
+    if (dispatch.statusCheckRemaining > 0) {
+      dispatch.statusCheckRemaining -= 1;
+      if (dispatch.statusCheckRemaining === 0) {
+        const next = getStation(session, getTrainTarget(train));
+        const restriction = train.faultActive ? " Falha ativa; operação restrita." : " Sem restrições adicionais.";
+        pushDispatchMessage(session, {
+          from: train.id,
+          to: "OCC-01",
+          trainId: train.id,
+          priority: train.delaySec > 90 ? "priority" : "normal",
+          direction: "incoming",
+          text: `Condição confirmada: ${getStatusText(train.status).toLowerCase()}, próximo ponto ${next.name}, atraso +${train.delaySec}s.${restriction}`
+        });
+      }
+    }
+
+    if (dispatch.routeStatus === "awaiting-confirmation") {
+      dispatch.acknowledgementRemaining -= 1;
+      if (dispatch.acknowledgementRemaining <= 0) {
+        const segmentBlocked = isSegmentBlocked(session, train, train.segmentIndex);
+        const occupied = segmentOccupied(session, train, train.segmentIndex);
+        if (segmentBlocked || occupied) {
+          dispatch.routeStatus = "denied";
+          dispatch.routeSegment = null;
+          pushDispatchMessage(session, {
+            from: "Sistema de via",
+            to: "OCC-01",
+            trainId: train.id,
+            priority: "critical",
+            direction: "system",
+            text: `${train.id}: autorização negada. O trecho solicitado não apresenta condição segura de ocupação.`
+          });
+        } else {
+          dispatch.routeStatus = "authorized";
+          dispatch.authorizationRemaining = 70;
+          session.missions.routeAuthorization = true;
+          session.xp += 6;
+          pushDispatchMessage(session, {
+            from: train.id,
+            to: "OCC-01",
+            trainId: train.id,
+            priority: "priority",
+            direction: "incoming",
+            text: "Prontidão confirmada. Autorização recebida; partida será executada conforme sinalização."
+          });
+        }
+      }
+    }
+
+    if (dispatch.routeStatus === "authorized" && dispatch.authorizationRemaining > 0) {
+      dispatch.authorizationRemaining -= 1;
+      if (dispatch.authorizationRemaining === 0) {
+        dispatch.routeStatus = "expired";
+        dispatch.routeSegment = null;
+        pushDispatchMessage(session, {
+          from: "OCC-01",
+          to: train.id,
+          trainId: train.id,
+          priority: "normal",
+          direction: "system",
+          text: "Janela de autorização encerrada. Solicite nova via antes de uma partida prioritária."
+        });
+      }
+    }
+
+    if (dispatch.priorityRemaining > 0) {
+      dispatch.priorityRemaining -= 1;
+      if (dispatch.priorityRemaining === 0) {
+        dispatch.priority = "normal";
+        pushDispatchMessage(session, {
+          from: "OCC-01",
+          to: train.id,
+          trainId: train.id,
+          priority: "normal",
+          direction: "system",
+          text: "Prioridade de recuperação encerrada. Retorne ao plano regular de marcha."
+        });
+      }
+    }
+  }
 }
 
 function addPassengerDemand(session) {
@@ -879,7 +1094,9 @@ function advanceTrain(session, train) {
       train.delaySec += 1;
       return;
     }
-    train.dwellRemaining -= 1;
+    const clearanceForCurrentSegment = train.dispatch.routeStatus === "authorized"
+      && train.dispatch.routeSegment === getSegmentKey(train, train.segmentIndex);
+    train.dwellRemaining -= clearanceForCurrentSegment ? 2 : 1;
     if (train.dwellRemaining <= 0) {
       if (isSegmentBlocked(session, train, train.segmentIndex) || segmentOccupied(session, train, train.segmentIndex)) {
         train.status = "WAITING_SIGNAL";
@@ -892,9 +1109,15 @@ function advanceTrain(session, train) {
     return;
   }
   if (train.status !== "EN_ROUTE") return;
-  train.progress += 1 / 58;
+  const priorityFactor = train.dispatch.priority === "recovery" && train.dispatch.priorityRemaining > 0 ? 1.18 : 1;
+  train.progress += priorityFactor / 58;
   if (train.progress < 1) return;
   train.progress = 0;
+  if (train.dispatch.routeStatus === "authorized") {
+    train.dispatch.routeStatus = "consumed";
+    train.dispatch.authorizationRemaining = 0;
+    train.dispatch.routeSegment = null;
+  }
   train.segmentIndex = (train.segmentIndex + 1) % train.route.length;
   const station = getStation(session, getTrainOrigin(train));
   const alighting = Math.min(train.occupancy, 18 + ((session.time + train.segmentIndex * 13) % 17));
@@ -912,6 +1135,14 @@ function advanceTrain(session, train) {
   if (train.status === "HELD") {
     train.holdRequested = false;
     pushLog(session, `${train.id}: retido em ${station.name}; a ordem alterou o intervalo da linha.`, "warning");
+    pushDispatchMessage(session, {
+      from: train.id,
+      to: "OCC-01",
+      trainId: train.id,
+      priority: "priority",
+      direction: "incoming",
+      text: `Retenção concluída em ${station.name}. Trem imobilizado e aguardando nova instrução.`
+    });
   }
 }
 
@@ -1006,6 +1237,14 @@ function triggerDoorFault(session) {
     startedAt: session.time
   });
   pushLog(session, `Ocorrência: ${train.id} reporta falha de porta. Manutenção recomendada.`, "warning");
+  pushDispatchMessage(session, {
+    from: train.id,
+    to: "OCC-01",
+    trainId: train.id,
+    priority: "priority",
+    direction: "incoming",
+    text: "Falha de porta reportada. Trem mantido em plataforma até avaliação da manutenção."
+  });
 }
 
 function triggerSignalFault(session) {
@@ -1023,6 +1262,13 @@ function triggerSignalFault(session) {
     startedAt: session.time
   });
   pushLog(session, `Emergência: falha de sinal bloqueou o corredor ${getStation(session, "central").name}–${getStation(session, "riverside").name}.`, "danger");
+  pushDispatchMessage(session, {
+    from: "Sistema de sinalização",
+    to: "OCC-01",
+    priority: "critical",
+    direction: "system",
+    text: `Falha crítica: corredor ${getStation(session, "central").name}–${getStation(session, "riverside").name} bloqueado para novos movimentos.`
+  });
 }
 
 function progressIncidentResponses(session) {
@@ -1094,6 +1340,14 @@ function recalculate(session) {
 function pushLog(session, text, kind) {
   session.log.unshift({ at: session.time, text, kind });
   session.log = session.log.slice(0, 18);
+}
+
+function pushDispatchMessage(session, { from, to, trainId = null, priority = "normal", direction = "system", text }) {
+  session.dispatch ??= createDispatchBoard();
+  const id = `OCC-${String(session.dispatch.nextId || 1).padStart(3, "0")}`;
+  session.dispatch.nextId = (session.dispatch.nextId || 1) + 1;
+  session.dispatch.messages.unshift({ id, at: session.time, from, to, trainId, priority, direction, text });
+  session.dispatch.messages = session.dispatch.messages.slice(0, 30);
 }
 
 function accept(message, extra = {}) { return { accepted: true, message, ...extra }; }

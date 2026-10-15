@@ -292,3 +292,44 @@ test("carreira que concluiu a orientação não recebe a introdução novamente"
   assert.equal(session.tutorial.status, "acknowledged");
   assert.equal(session.tutorial.rewardGranted, true);
 });
+
+test("o canal de despacho registra consulta e retorno do condutor", () => {
+  const session = createInitialSession();
+  const initialMessages = session.dispatch.messages.length;
+  const result = applyCommand(session, { id: "status-vm101", type: "REQUEST_STATUS_UPDATE", trainId: "VM-101" });
+
+  assert.equal(result.accepted, true);
+  assert.equal(session.dispatch.messages.length, initialMessages + 1);
+  assert.equal(session.dispatch.messages[0].direction, "outgoing");
+  tickSession(session, 2);
+  assert.equal(session.dispatch.messages[0].from, "VM-101");
+  assert.equal(session.dispatch.messages[0].direction, "incoming");
+});
+
+test("autorização de via exige confirmação antes da prioridade de recuperação", () => {
+  const session = createInitialSession();
+  const train = session.trains.find((item) => item.id === "VM-103");
+  const premature = applyCommand(session, { id: "priority-early", type: "SET_DISPATCH_PRIORITY", trainId: train.id });
+  const requested = applyCommand(session, { id: "route-vm103", type: "REQUEST_ROUTE_AUTHORIZATION", trainId: train.id });
+
+  assert.equal(premature.accepted, false);
+  assert.equal(requested.accepted, true);
+  assert.equal(train.dispatch.routeStatus, "awaiting-confirmation");
+  tickSession(session, 4);
+  assert.equal(train.dispatch.routeStatus, "authorized");
+  const priority = applyCommand(session, { id: "priority-vm103", type: "SET_DISPATCH_PRIORITY", trainId: train.id });
+  assert.equal(priority.accepted, true);
+  assert.equal(train.dispatch.priority, "recovery");
+  assert.equal(session.missions.routeAuthorization, true);
+  assert.equal(session.missions.dispatchPriority, true);
+});
+
+test("saves anteriores recebem estado de despacho e mensagens iniciais", () => {
+  const legacy = createInitialSession();
+  delete legacy.dispatch;
+  delete legacy.trains[0].dispatch;
+  const resumed = normalizeSession(legacy);
+
+  assert.ok(resumed.dispatch.messages.length > 0);
+  assert.equal(resumed.trains[0].dispatch.routeStatus, "not-requested");
+});
