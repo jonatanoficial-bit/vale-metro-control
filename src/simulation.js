@@ -14,7 +14,16 @@ export const cityProfiles = [
     demandMultiplier: 1,
     capacityMultiplier: 1,
     queueMultiplier: 1,
-    stationNames: ["Pátio Vale", "Vale Norte", "Central", "Riverside", "Porto Azul"]
+    stationNames: ["Pátio Vale", "Vale Norte", "Central", "Riverside", "Porto Azul"],
+    mapPositions: {
+      depot: { x: 0.08, y: 0.76 }, norte: { x: 0.23, y: 0.52 }, central: { x: 0.43, y: 0.49 },
+      riverside: { x: 0.62, y: 0.27 }, porto: { x: 0.88, y: 0.46 }
+    },
+    campaign: [
+      { id: "vale-civica", title: "Cúpula cívica", stationId: "central", demandMultiplier: 1.12, contract: { title: "Pontualidade cívica", description: "Mantenha a rede acima de 87% de pontualidade.", goalType: "on_time", targetValue: 87, rewardCents: 8_500_00, xpReward: 24 } },
+      { id: "vale-conexao", title: "Conexão de bairros", stationId: "riverside", demandMultiplier: 1.2, contract: { title: "Conexão Horizonte", description: "Coloque a Linha Horizonte em operação neste turno.", goalType: "support_line", rewardCents: 11_000_00, xpReward: 30 } },
+      { id: "vale-verde", title: "Pacto de mobilidade verde", stationId: "norte", demandMultiplier: 1.08, contract: { title: "Matriz eficiente", description: "Aprove o programa de energia eficiente.", goalType: "green_energy", rewardCents: 12_000_00, xpReward: 32 } }
+    ]
   },
   {
     id: "porto-dourado",
@@ -28,7 +37,16 @@ export const cityProfiles = [
     demandMultiplier: 1.18,
     capacityMultiplier: 0.94,
     queueMultiplier: 1.16,
-    stationNames: ["Pátio Marina", "Estaleiro", "Mercado Velho", "Distrito do Porto", "Terminal Oceano"]
+    stationNames: ["Pátio Marina", "Estaleiro", "Mercado Velho", "Distrito do Porto", "Terminal Oceano"],
+    mapPositions: {
+      depot: { x: 0.08, y: 0.72 }, norte: { x: 0.25, y: 0.38 }, central: { x: 0.47, y: 0.54 },
+      riverside: { x: 0.67, y: 0.29 }, porto: { x: 0.90, y: 0.42 }
+    },
+    campaign: [
+      { id: "porto-janela", title: "Janela portuária", stationId: "riverside", demandMultiplier: 1.22, contract: { title: "Operação de atracação", description: "Sustente ao menos 84% de pontualidade sob alta demanda.", goalType: "on_time", targetValue: 84, rewardCents: 10_500_00, xpReward: 28 } },
+      { id: "porto-acesso", title: "Acordo de acesso", stationId: "central", demandMultiplier: 1.14, contract: { title: "Tarifa de conexão", description: "Ative a tarifa social para os trabalhadores do porto.", goalType: "social_fare", rewardCents: 9_000_00, xpReward: 25 } },
+      { id: "porto-costeira", title: "Corredor costeiro", stationId: "porto", demandMultiplier: 1.25, contract: { title: "Linha Costeira", description: "Coloque a Linha Costeira em operação neste turno.", goalType: "support_line", rewardCents: 12_500_00, xpReward: 32 } }
+    ]
   },
   {
     id: "serra-clara",
@@ -42,7 +60,16 @@ export const cityProfiles = [
     demandMultiplier: 0.86,
     capacityMultiplier: 1.08,
     queueMultiplier: 0.82,
-    stationNames: ["Pátio da Serra", "Parque Alto", "Centro Cívico", "Hospital Regional", "Vale do Sol"]
+    stationNames: ["Pátio da Serra", "Parque Alto", "Centro Cívico", "Hospital Regional", "Vale do Sol"],
+    mapPositions: {
+      depot: { x: 0.08, y: 0.78 }, norte: { x: 0.24, y: 0.34 }, central: { x: 0.48, y: 0.52 },
+      riverside: { x: 0.66, y: 0.25 }, porto: { x: 0.91, y: 0.58 }
+    },
+    campaign: [
+      { id: "serra-hospital", title: "Plantão hospitalar", stationId: "riverside", demandMultiplier: 1.16, contract: { title: "Prioridade clínica", description: "Sustente ao menos 86% de pontualidade no acesso ao hospital.", goalType: "on_time", targetValue: 86, rewardCents: 8_000_00, xpReward: 24 } },
+      { id: "serra-equipe", title: "Feira das colinas", stationId: "central", demandMultiplier: 1.2, contract: { title: "Apoio de estação", description: "Mobilize uma equipe de estação no ponto de maior demanda.", goalType: "station_team", rewardCents: 7_500_00, xpReward: 23 } },
+      { id: "serra-verde", title: "Vale sustentável", stationId: "porto", demandMultiplier: 1.1, contract: { title: "Energia das Serras", description: "Aprove o programa de energia eficiente.", goalType: "green_energy", rewardCents: 11_000_00, xpReward: 30 } }
+    ]
   }
 ];
 
@@ -88,13 +115,14 @@ export function createInitialSession(mode = "career", cityId = "vale-central", c
   const projects = { riversideExpansion: createRiversideExpansionProject(city.stationNames[3]) };
   const completedProjectIds = careerProfile?.completedProjectIds ?? [];
   const policyState = careerProfile?.policyState ?? {};
+  const campaign = createCampaign(city, careerProfile?.campaignState);
   if (mode === "career" && completedProjectIds.includes(projects.riversideExpansion.id)) {
     projects.riversideExpansion.status = "complete";
     const station = stations.find((item) => item.id === projects.riversideExpansion.stationId);
     if (station) station.capacity += projects.riversideExpansion.capacityGain;
   }
   const session = {
-    schemaVersion: 6,
+    schemaVersion: 8,
     mode,
     time: 6 * 3600,
     timeScale: 1,
@@ -147,11 +175,12 @@ export function createInitialSession(mode = "career", cityId = "vale-central", c
     },
     missions: {
       observe: false, hold: false, reserve: false, maintenance: false, signal: false, passengers: false, expansion: false,
-      supportLine: false, preventiveMaintenance: false, greenEnergy: false, socialFare: false, peakService: false
+      supportLine: false, preventiveMaintenance: false, greenEnergy: false, socialFare: false, peakService: false,
+      stationTeam: false, contract: false
     },
     incidents: [],
     incidentHistory: [],
-    staff: { maintenanceAvailable: 1, signalAvailable: 1, passengerGuides: 2 },
+    staff: { maintenanceAvailable: 1, signalAvailable: 1, passengerGuides: 2, stationTeams: 2 },
     scenario: {
       doorFaultAt: 6 * 3600 + 180,
       doorFaultTriggered: false,
@@ -166,6 +195,8 @@ export function createInitialSession(mode = "career", cityId = "vale-central", c
       peakServiceDeployed: false
     },
     passengerTransfers: 0,
+    teamSupport: { stationId: null, remaining: 0 },
+    campaign,
     projects,
     career: mode === "career" ? {
       cityId: city.id,
@@ -174,6 +205,7 @@ export function createInitialSession(mode = "career", cityId = "vale-central", c
       completedTurns: careerProfile?.completedTurns ?? 0,
       completedProjectIds,
       policyState,
+      campaignState: careerProfile?.campaignState ?? { chapterIndex: 0, completedContracts: [] },
       balanceCents
     } : null,
     turn: {
@@ -193,20 +225,25 @@ export function createInitialSession(mode = "career", cityId = "vale-central", c
 
 export function normalizeSession(session) {
   const city = getCityProfile(session.cityId || "vale-central");
-  session.schemaVersion = 6;
+  session.schemaVersion = 8;
   session.cityId ??= city.id;
   session.city ??= city.name;
   session.lineName ??= city.lineName;
   session.supportLineName ??= city.supportLineName;
   session.corridor ??= city.corridor;
+  session.stations?.forEach((station) => {
+    const position = city.mapPositions?.[station.id];
+    if (position) Object.assign(station, position);
+  });
   session.missions = {
     observe: false, hold: false, reserve: false, maintenance: false, signal: false, passengers: false, expansion: false,
     supportLine: false, preventiveMaintenance: false, greenEnergy: false, socialFare: false, peakService: false,
+    stationTeam: false, contract: false,
     ...session.missions
   };
   session.incidents ??= [];
   session.incidentHistory ??= [];
-  session.staff = { maintenanceAvailable: 1, signalAvailable: 1, passengerGuides: 2, ...session.staff };
+  session.staff = { maintenanceAvailable: 1, signalAvailable: 1, passengerGuides: 2, stationTeams: 2, ...session.staff };
   session.scenario = {
     doorFaultAt: 6 * 3600 + 180,
     doorFaultTriggered: false,
@@ -217,6 +254,7 @@ export function normalizeSession(session) {
   session.network = { blockedSegments: [], supportLineStatus: "available", ...session.network };
   session.policies = { farePlan: "balanced", greenEnergy: false, peakBoostRemaining: 0, peakServiceDeployed: false, ...session.policies };
   session.passengerTransfers ??= 0;
+  session.teamSupport = { stationId: null, remaining: 0, ...session.teamSupport };
   const expansionStationName = session.stations?.find((station) => station.id === "riverside")?.name || "Riverside";
   session.projects = { riversideExpansion: createRiversideExpansionProject(expansionStationName), ...session.projects };
   session.projects.riversideExpansion = { ...createRiversideExpansionProject(expansionStationName), ...session.projects.riversideExpansion };
@@ -228,10 +266,13 @@ export function normalizeSession(session) {
       completedTurns: 0,
       completedProjectIds: [],
       policyState: {},
+      campaignState: { chapterIndex: 0, completedContracts: [] },
       balanceCents: session.balanceCents,
       ...session.career
     };
   }
+  const campaignState = session.career?.campaignState ?? { chapterIndex: 0, completedContracts: [] };
+  session.campaign = normalizeCampaign(session.campaign, city, campaignState);
   session.turn = { status: "active", startedAt: 6 * 3600, minimumDuration: 300, summary: null, ...session.turn };
   session.commandIds ??= [];
   session.supportTrain ??= {
@@ -272,6 +313,7 @@ function getCityProfile(cityId) {
 function createCityStations(city) {
   return stationBlueprint.map((station, index) => ({
     ...station,
+    ...city.mapPositions?.[station.id],
     name: city.stationNames[index],
     capacity: Math.round(station.capacity * city.capacityMultiplier),
     demand: Number((station.demand * city.demandMultiplier).toFixed(2)),
@@ -279,6 +321,44 @@ function createCityStations(city) {
     arrivals: 0,
     departures: 0
   }));
+}
+
+function getCampaignChapter(city, chapterIndex = 0) {
+  const chapters = city.campaign || [];
+  return chapters[chapterIndex % Math.max(chapters.length, 1)] || {
+    id: "standard-service",
+    title: "Serviço metropolitano",
+    stationId: "central",
+    demandMultiplier: 1,
+    contract: { title: "Serviço regular", description: "Mantenha a operação em movimento.", goalType: "on_time", targetValue: 80, rewardCents: 5_000_00, xpReward: 12 }
+  };
+}
+
+function createCampaign(city, campaignState = {}) {
+  const chapterIndex = campaignState?.chapterIndex ?? 0;
+  const chapter = getCampaignChapter(city, chapterIndex);
+  return {
+    chapterIndex,
+    scenarioId: chapter.id,
+    title: chapter.title,
+    stationId: chapter.stationId,
+    demandMultiplier: chapter.demandMultiplier,
+    contract: { ...chapter.contract, status: "active", progress: 0 }
+  };
+}
+
+function normalizeCampaign(campaign, city, campaignState) {
+  const fallback = createCampaign(city, campaignState);
+  if (!campaign) return fallback;
+  const chapter = getCampaignChapter(city, campaign.chapterIndex ?? campaignState?.chapterIndex ?? 0);
+  return {
+    ...fallback,
+    ...campaign,
+    title: campaign.title ?? chapter.title,
+    stationId: campaign.stationId ?? chapter.stationId,
+    demandMultiplier: campaign.demandMultiplier ?? chapter.demandMultiplier,
+    contract: { ...fallback.contract, ...campaign.contract }
+  };
 }
 
 function createRiversideExpansionProject(stationName = "Riverside") {
@@ -366,6 +446,9 @@ export function applyCommand(session, command) {
       break;
     case "DIRECT_PASSENGERS":
       result = directPassengers(session, command.incidentId);
+      break;
+    case "DEPLOY_STATION_TEAM":
+      result = deployStationTeam(session, command.stationId);
       break;
     case "APPROVE_EXPANSION":
       result = approveExpansion(session, command.projectId);
@@ -527,6 +610,25 @@ function directPassengers(session, incidentId) {
   return accept(`${redirected} passageiros redirecionados; pressão nas plataformas reduzida.`, { projectedCost: cost, redirected });
 }
 
+function deployStationTeam(session, stationId) {
+  const cost = 1_200_00;
+  const station = getStation(session, stationId || session.metrics.criticalStationId);
+  if (!station) return reject("A estação escolhida não está disponível para receber a equipe.");
+  if (session.teamSupport.remaining > 0) return reject("Uma equipe de estação já está mobilizada neste turno.");
+  if (session.staff.stationTeams < 1) return reject("Não há equipe de estação disponível para mobilização.");
+  if (session.balanceCents < cost) return reject("Saldo insuficiente para mobilizar a equipe de estação.");
+  const assisted = Math.min(station.queue, 46);
+  station.queue -= assisted;
+  session.staff.stationTeams -= 1;
+  session.teamSupport = { stationId: station.id, remaining: 90 };
+  session.balanceCents -= cost;
+  session.operatingCostCents += cost;
+  session.missions.stationTeam = true;
+  session.xp += 14;
+  pushLog(session, `Equipe de estação mobilizada em ${station.name}: ${assisted} passageiros receberam orientação prioritária.`, "info");
+  return accept(`Equipe mobilizada em ${station.name}; a demanda local será reduzida por 90 s de simulação.`, { projectedCost: cost, assisted });
+}
+
 function approveExpansion(session, projectId) {
   const project = Object.values(session.projects).find((item) => item.id === projectId);
   if (!project) return reject("Projeto de expansão não encontrado.");
@@ -588,9 +690,11 @@ function completeTurn(session) {
   }
   const activeIncidents = getActiveIncidents(session);
   const criticalOpen = activeIncidents.some((incident) => incident.severity === "critical");
+  const contractResult = resolveCampaignContract(session);
   const strategicBonus = (session.network.supportLineStatus === "operating" ? 2 : 0)
     + (session.policies.greenEnergy ? 2 : 0)
-    + (session.missions.peakService ? 1 : 0);
+    + (session.missions.peakService ? 1 : 0)
+    + (contractResult.completed ? 2 : 0);
   const score = Math.max(0, Math.min(100, session.metrics.onTime + (criticalOpen ? -15 : 4) + (activeIncidents.length === 0 ? 6 : 0) + strategicBonus));
   const grade = score >= 94 ? "A" : score >= 84 ? "B" : score >= 74 ? "C" : "D";
   const rewardCents = { A: 16_000_00, B: 10_000_00, C: 5_000_00, D: 0 }[grade];
@@ -610,6 +714,15 @@ function completeTurn(session) {
     farePlan: session.policies.farePlan,
     greenEnergy: session.policies.greenEnergy
   };
+  const previousCampaignState = session.career.campaignState || { chapterIndex: 0, completedContracts: [] };
+  session.career.campaignState = {
+    chapterIndex: (previousCampaignState.chapterIndex ?? 0) + (contractResult.completed ? 1 : 0),
+    completedContracts: contractResult.completed
+      ? [...(previousCampaignState.completedContracts || []), session.campaign.scenarioId]
+      : (previousCampaignState.completedContracts || []),
+    lastContractId: session.campaign.scenarioId,
+    lastContractStatus: contractResult.completed ? "completed" : "pending"
+  };
   session.turn.status = "complete";
   session.turn.summary = {
     grade,
@@ -617,11 +730,48 @@ function completeTurn(session) {
     rewardCents,
     xpReward,
     onTime: session.metrics.onTime,
-    incidentsOpen: activeIncidents.length
+    incidentsOpen: activeIncidents.length,
+    contract: contractResult
   };
   session.timeScale = 0;
-  pushLog(session, `Turno encerrado com nota ${grade}. Receita de desempenho registrada.`, "info");
+  pushLog(session, `Turno encerrado com nota ${grade}. Receita de desempenho registrada.${contractResult.completed ? " Contrato municipal concluído." : " Contrato municipal permanece pendente."}`, "info");
   return accept(`Turno concluído com nota ${grade}. O próximo dia da carreira está disponível.`, { summary: session.turn.summary });
+}
+
+function resolveCampaignContract(session) {
+  const contract = session.campaign?.contract;
+  if (!contract) return { completed: false, title: "Contrato indisponível", rewardCents: 0, xpReward: 0 };
+  let completed = false;
+  let progress = "";
+  if (contract.goalType === "on_time") {
+    completed = session.metrics.onTime >= contract.targetValue;
+    progress = `${session.metrics.onTime}% / ${contract.targetValue}% de pontualidade`;
+  }
+  if (contract.goalType === "support_line") {
+    completed = session.network.supportLineStatus === "operating";
+    progress = completed ? "Linha complementar em operação" : "Linha complementar ainda não entrou em serviço";
+  }
+  if (contract.goalType === "green_energy") {
+    completed = session.policies.greenEnergy;
+    progress = completed ? "Programa de energia eficiente aprovado" : "Programa de energia eficiente não aprovado";
+  }
+  if (contract.goalType === "social_fare") {
+    completed = session.policies.farePlan === "social";
+    progress = completed ? "Tarifa social em vigor" : "Tarifa social ainda não está em vigor";
+  }
+  if (contract.goalType === "station_team") {
+    completed = session.missions.stationTeam;
+    progress = completed ? "Equipe de estação mobilizada" : "Nenhuma equipe de estação foi mobilizada";
+  }
+  contract.progress = progress;
+  contract.status = completed ? "completed" : "pending";
+  if (completed) {
+    session.balanceCents += contract.rewardCents;
+    session.revenueCents += contract.rewardCents;
+    session.xp += contract.xpReward;
+    session.missions.contract = true;
+  }
+  return { completed, title: contract.title, description: contract.description, rewardCents: completed ? contract.rewardCents : 0, xpReward: completed ? contract.xpReward : 0, progress };
 }
 
 export function tickSession(session, seconds = 1) {
@@ -633,6 +783,7 @@ export function tickSession(session, seconds = 1) {
     session.operatingCostCents += session.policies.greenEnergy ? 160 : 210;
     updateFleetCondition(session);
     updatePolicies(session);
+    updateTeamSupport(session);
     updateIncidents(session);
     updateProjects(session);
     recalculate(session);
@@ -645,7 +796,9 @@ function addPassengerDemand(session) {
     const wave = Math.sin((session.time + station.x * 900) / 97) * 0.21;
     const multiplier = station.id === "riverside" ? 1.25 : 1;
     const farePressure = session.policies.farePlan === "social" ? 1.08 : 1;
-    const added = Math.max(0, Math.floor((station.demand + wave) * multiplier * farePressure));
+    const campaignPressure = station.id === session.campaign?.stationId ? session.campaign.demandMultiplier : 1;
+    const teamRelief = station.id === session.teamSupport.stationId && session.teamSupport.remaining > 0 ? 0.78 : 1;
+    const added = Math.max(0, Math.floor((station.demand + wave) * multiplier * farePressure * campaignPressure * teamRelief));
     station.queue += added;
     station.arrivals += added;
   }
@@ -746,6 +899,16 @@ function updatePolicies(session) {
   if (session.policies.peakBoostRemaining === 0) {
     pushLog(session, "Reforço de pico encerrado; o embarque retornou ao ritmo padrão.", "info");
   }
+}
+
+function updateTeamSupport(session) {
+  if (session.teamSupport.remaining <= 0) return;
+  session.teamSupport.remaining -= 1;
+  if (session.teamSupport.remaining > 0) return;
+  const station = getStation(session, session.teamSupport.stationId);
+  session.staff.stationTeams += 1;
+  session.teamSupport.stationId = null;
+  pushLog(session, `Equipe de estação concluiu o reforço em ${station?.name || "estação prioritária"} e retornou à base.`, "info");
 }
 
 function segmentOccupied(session, currentTrain, segmentIndex) {

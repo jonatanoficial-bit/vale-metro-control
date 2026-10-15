@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#061526" />
     <meta name="description" content="Vale Metro Control - protótipo de simulador operacional de metrôs." />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="./assets/vale-metro-control-logo.png" />
     <title>Vale Metro Control</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
@@ -14,7 +16,7 @@
         <div class="landing-visual" aria-hidden="true"></div>
         <div class="landing-content">
           <img class="landing-logo" src="./assets/vale-metro-control-logo.png" alt="Vale Metro Control" />
-          <p class="eyebrow">CENTRAL METROPOLITANA · BUILD 0.3.0</p>
+          <p class="eyebrow">CENTRAL METROPOLITANA · RELEASE 1.0</p>
           <h1 id="game-title">A cidade está em movimento.</h1>
           <p class="landing-copy">
             Coordene a Linha Vale, responda a uma demanda crescente em Riverside e mantenha o serviço seguro.
@@ -62,6 +64,7 @@
             <button class="time-button active" data-time="1">1×</button>
             <button class="time-button" data-time="2">2×</button>
             <button class="time-button" data-time="4">4×</button>
+            <button id="accessibility-toggle" class="icon-button accessibility-toggle" aria-label="Abrir preferências de acessibilidade" aria-expanded="false" title="Acessibilidade">Aa</button>
           </div>
         </header>
 
@@ -113,6 +116,16 @@
             </div>
             <ol id="mission-list" class="mission-list"></ol>
           </section>
+          <section class="campaign-card panel">
+            <div class="panel-heading compact">
+              <div>
+                <p class="eyebrow">CAMPANHA MUNICIPAL</p>
+                <h2>Cenário e contrato</h2>
+              </div>
+              <span class="status-pill good">ATIVO</span>
+            </div>
+            <div id="campaign-content" class="campaign-content" aria-label="Cenário de campanha e contrato atual"></div>
+          </section>
           <section class="alert-card panel">
             <div class="panel-heading compact">
               <div>
@@ -147,6 +160,23 @@
         </footer>
       </section>
 
+      <section id="accessibility-panel" class="accessibility-panel panel" hidden aria-labelledby="accessibility-title">
+        <div class="panel-heading compact">
+          <div>
+            <p class="eyebrow">PREFERÊNCIAS LOCAIS</p>
+            <h2 id="accessibility-title">Acessibilidade</h2>
+          </div>
+          <button id="accessibility-close" class="text-button">Fechar</button>
+        </div>
+        <p>As preferências ficam salvas neste navegador e funcionam também no modo offline.</p>
+        <div class="accessibility-options">
+          <button class="accessibility-option" data-accessibility-setting="highContrast" aria-pressed="false">Alto contraste</button>
+          <button class="accessibility-option" data-accessibility-setting="reducedMotion" aria-pressed="false">Reduzir movimento</button>
+          <button class="accessibility-option" data-accessibility-setting="largeText" aria-pressed="false">Texto ampliado</button>
+          <button class="accessibility-option" data-accessibility-setting="audio" aria-pressed="false">Sinais sonoros</button>
+        </div>
+      </section>
+
       <section id="turn-summary" class="turn-summary" hidden aria-modal="true" role="dialog" aria-labelledby="turn-summary-title">
         <div class="turn-summary-card panel">
           <p class="eyebrow">RELATÓRIO DE TURNO</p>
@@ -159,10 +189,6 @@
         </div>
       </section>
 
-      <div id="portrait-notice" class="portrait-notice" hidden>
-        <img src="./assets/vale-metro-control-logo.png" alt="Vale Metro Control" />
-        <p>Gire seu dispositivo para usar a central em modo horizontal.</p>
-      </div>
       <p id="live-region" class="sr-only" aria-live="assertive"></p>
     </main>
     <script type="module" src="./src/main.js"></script>

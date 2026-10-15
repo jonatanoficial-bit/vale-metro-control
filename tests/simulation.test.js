@@ -215,3 +215,57 @@ test("saves anteriores recebem o indicador de linhas ativas ao serem retomados",
 
   assert.equal(resumed.metrics.activeLines, 1);
 });
+
+test("o contrato municipal de linha complementar recompensa a carreira ao concluir o turno", () => {
+  const session = createInitialSession("career", "vale-central", {
+    campaignState: { chapterIndex: 1, completedContracts: [] }
+  });
+  const initialBalance = session.balanceCents;
+  applyCommand(session, { id: "support-contract", type: "ACTIVATE_SUPPORT_LINE" });
+  tickSession(session, 300);
+  const result = applyCommand(session, { id: "complete-contract", type: "COMPLETE_TURN" });
+
+  assert.equal(result.accepted, true);
+  assert.equal(result.summary.contract.completed, true);
+  assert.equal(result.summary.contract.title, "Conexão Horizonte");
+  assert.equal(session.career.campaignState.chapterIndex, 2);
+  assert.ok(session.balanceCents > initialBalance - 680000);
+});
+
+test("a equipe de estação reduz a fila e retorna à base após o reforço", () => {
+  const session = createInitialSession("career", "serra-clara", {
+    campaignState: { chapterIndex: 1, completedContracts: [] }
+  });
+  const station = session.stations.find((item) => item.id === "central");
+  const queueBefore = station.queue;
+  const result = applyCommand(session, { id: "station-team", type: "DEPLOY_STATION_TEAM", stationId: station.id });
+
+  assert.equal(result.accepted, true);
+  assert.ok(station.queue < queueBefore);
+  assert.equal(session.staff.stationTeams, 1);
+  assert.equal(session.teamSupport.stationId, station.id);
+  assert.equal(session.missions.stationTeam, true);
+  tickSession(session, 90);
+  assert.equal(session.teamSupport.remaining, 0);
+  assert.equal(session.staff.stationTeams, 2);
+});
+
+test("saves anteriores recebem o cenário e o contrato atual da campanha", () => {
+  const legacySession = createInitialSession("career", "porto-dourado");
+  delete legacySession.campaign;
+  const resumed = normalizeSession(legacySession);
+
+  assert.equal(resumed.campaign.title, "Janela portuária");
+  assert.equal(resumed.campaign.contract.status, "active");
+});
+
+test("cada cidade aplica seu traçado operacional ao iniciar e retomar a carreira", () => {
+  const vale = createInitialSession("career", "vale-central");
+  const porto = createInitialSession("career", "porto-dourado");
+  const legacy = createInitialSession("career", "serra-clara");
+  legacy.stations.find((station) => station.id === "central").x = 0;
+  const resumed = normalizeSession(legacy);
+
+  assert.notEqual(vale.stations.find((station) => station.id === "central").x, porto.stations.find((station) => station.id === "central").x);
+  assert.equal(resumed.stations.find((station) => station.id === "central").x, 0.48);
+});

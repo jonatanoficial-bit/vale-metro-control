@@ -45,13 +45,16 @@ const els = {
   alertActions: document.querySelector("#alert-actions"),
   eventLog: document.querySelector("#event-log"),
   policyList: document.querySelector("#policy-list"),
+  campaignContent: document.querySelector("#campaign-content"),
+  accessibilityToggle: document.querySelector("#accessibility-toggle"),
+  accessibilityPanel: document.querySelector("#accessibility-panel"),
+  accessibilityClose: document.querySelector("#accessibility-close"),
   completeTurn: document.querySelector("#complete-turn"),
   turnSummary: document.querySelector("#turn-summary"),
   turnSummaryContent: document.querySelector("#turn-summary-content"),
   nextTurn: document.querySelector("#next-turn"),
   returnToCities: document.querySelector("#return-to-cities"),
   live: document.querySelector("#live-region"),
-  portrait: document.querySelector("#portrait-notice"),
   continueMessage: document.querySelector("#continue-message"),
   resumeSaved: document.querySelector("#resume-saved")
 };
@@ -62,6 +65,10 @@ let simTimer;
 let saveTimer;
 let commandSequence = 0;
 let careerProfiles = {};
+let audioContext;
+
+const accessibilityStorageKey = "vale-metro-control-accessibility";
+let accessibility = loadAccessibilityPreferences();
 
 const canvasContext = els.canvas.getContext("2d");
 
@@ -89,6 +96,24 @@ async function init() {
     if (!button || button.disabled) return;
     runCommand({ type: button.dataset.policyCommand });
   });
+  els.campaignContent.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-campaign-command]");
+    if (!button || button.disabled) return;
+    if (button.dataset.campaignCommand === "station-team") {
+      runCommand({ type: "DEPLOY_STATION_TEAM", stationId: button.dataset.stationId });
+    }
+  });
+  els.accessibilityToggle.addEventListener("click", () => setAccessibilityPanel(els.accessibilityPanel.hidden));
+  els.accessibilityClose.addEventListener("click", () => setAccessibilityPanel(false));
+  els.accessibilityPanel.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-accessibility-setting]");
+    if (!button) return;
+    const setting = button.dataset.accessibilitySetting;
+    accessibility[setting] = !accessibility[setting];
+    saveAccessibilityPreferences();
+    applyAccessibilityPreferences();
+    if (setting === "audio" && accessibility.audio) playOperationalCue("enabled");
+  });
   els.alertActions.addEventListener("click", (event) => {
     const button = event.target.closest("[data-alert-command]");
     if (!button || button.disabled) return;
@@ -107,11 +132,15 @@ async function init() {
   els.canvas.addEventListener("click", selectFromMap);
   window.addEventListener("resize", renderMap);
   window.addEventListener("keydown", handleKeyboard);
+  applyAccessibilityPreferences();
+  registerServiceWorker();
 }
 
 function renderCityOptions() {
   els.cityOptions.innerHTML = cityProfiles.map((city) => {
     const career = careerProfiles[city.id];
+    const completedContracts = career?.campaignState?.completedContracts?.length ?? 0;
+    const nextChapter = city.campaign[(career?.campaignState?.chapterIndex ?? 0) % city.campaign.length];
     const progress = career
       ? `Dia ${career.day} · ${career.completedTurns} turno${career.completedTurns === 1 ? "" : "s"} concluído${career.completedTurns === 1 ? "" : "s"}`
       : "Nova carreira";
@@ -119,7 +148,7 @@ function renderCityOptions() {
       <span class="city-difficulty">${city.difficulty}</span>
       <strong>${city.name}</strong>
       <p>${city.description}</p>
-      <small>${city.lineName} · caixa inicial ${formatCurrency(career?.balanceCents ?? city.startingBalanceCents)}</small>
+      <small>${city.lineName} · caixa inicial ${formatCurrency(career?.balanceCents ?? city.startingBalanceCents)}<br>Próximo contrato: ${nextChapter.contract.title} · ${completedContracts}/${city.campaign.length} concluídos</small>
       <em>${progress}</em>
     </button>`;
   }).join("");
@@ -163,7 +192,7 @@ async function startGame(mode, cityId = "vale-central", careerProfile = null) {
     tickSession(session, session.timeScale);
     render();
     scheduleSave();
-  }, 250);
+  }, 1000);
 }
 
 async function continueSavedSession() {
@@ -185,7 +214,7 @@ async function continueSavedSession() {
     tickSession(session, session.timeScale);
     render();
     scheduleSave();
-  }, 250);
+  }, 1000);
 }
 
 function setTimeScale(scale) {
@@ -202,6 +231,7 @@ function runCommand(command) {
   if (!session) return;
   const result = applyCommand(session, { ...command, id: `cmd-${session.time}-${commandSequence++}` });
   announce(result.message);
+  playOperationalCue(result.accepted ? "success" : "warning");
   if (result.accepted && command.type === "HOLD_TRAIN") selected = { type: "train", id: command.trainId };
   render();
   scheduleSave();
@@ -220,7 +250,8 @@ async function completeCurrentTurn() {
       totalXp: session.career.totalXp,
       completedTurns: session.career.completedTurns,
       completedProjectIds: session.career.completedProjectIds,
-      policyState: session.career.policyState
+      policyState: session.career.policyState,
+      campaignState: session.career.campaignState
     };
     careerProfiles[session.cityId] = nextProfile;
     await saveStore.saveCareerProfiles(careerProfiles);
@@ -231,7 +262,11 @@ async function completeCurrentTurn() {
 }
 
 function renderTurnSummary(summary) {
-  els.turnSummaryContent.innerHTML = `<div class="turn-grade"><b>${summary.grade}</b><div><strong>${summary.score}% de desempenho operacional</strong><p>${summary.onTime}% de pontualidade · ${summary.incidentsOpen} ocorrência${summary.incidentsOpen === 1 ? "" : "s"} em aberto</p><p>Recompensa: ${formatCurrency(summary.rewardCents)} · +${summary.xpReward} XP de desempenho</p></div></div>`;
+  const contract = summary.contract;
+  const contractText = contract?.completed
+    ? `Contrato concluído: ${contract.title} · ${formatCurrency(contract.rewardCents)} · +${contract.xpReward} XP`
+    : `Contrato pendente: ${contract?.title || "municipal"} · ${contract?.progress || "meta não atingida"}`;
+  els.turnSummaryContent.innerHTML = `<div class="turn-grade"><b>${summary.grade}</b><div><strong>${summary.score}% de desempenho operacional</strong><p>${summary.onTime}% de pontualidade · ${summary.incidentsOpen} ocorrência${summary.incidentsOpen === 1 ? "" : "s"} em aberto</p><p>Recompensa: ${formatCurrency(summary.rewardCents)} · +${summary.xpReward} XP de desempenho</p><p class="contract-result ${contract?.completed ? "success" : "pending"}">${contractText}</p></div></div>`;
   els.turnSummary.hidden = false;
 }
 
@@ -288,6 +323,7 @@ function render() {
   renderAlerts();
   renderLog();
   renderPolicies();
+  renderCampaign();
   renderMap();
 }
 
@@ -366,6 +402,7 @@ function renderContext() {
         ${project?.status === "available" ? `<button class="button primary" data-command="expansion" data-project="${project.id}">Aprovar expansão · ${formatCurrency(project.costCents)}</button>` : ""}
         ${project?.status === "building" ? `<button class="button secondary" disabled>Obra em andamento · ${project.constructionRemaining}s</button>` : ""}
         ${project?.status === "complete" ? `<button class="button secondary" disabled>Expansão concluída</button>` : ""}
+        <button class="button secondary" data-command="station-team" data-station="${station.id}" ${session.teamSupport.remaining > 0 ? "disabled" : ""}>${session.teamSupport.remaining > 0 ? `Equipe em campo · ${session.teamSupport.remaining}s` : `Mobilizar equipe · ${formatCurrency(1_200_00)}`}</button>
         <button class="button primary" data-command="reserve">Enviar trem reserva</button>
         <button class="button secondary" data-command="observe">Analisar rede</button>
       </div>`;
@@ -380,6 +417,7 @@ function renderContext() {
       if (command === "maintenance") runCommand({ type: "ASSIGN_MAINTENANCE", incidentId: button.dataset.incident });
       if (command === "preventive") runCommand({ type: "SCHEDULE_PREVENTIVE_MAINTENANCE", trainId: train });
       if (command === "expansion") runCommand({ type: "APPROVE_EXPANSION", projectId: button.dataset.project });
+      if (command === "station-team") runCommand({ type: "DEPLOY_STATION_TEAM", stationId: button.dataset.station });
     });
   });
   els.context.querySelector("[data-focus]")?.addEventListener("click", () => {
@@ -389,7 +427,9 @@ function renderContext() {
 }
 
 function renderMission() {
+  const contract = session.campaign?.contract;
   const missions = [
+    [session.missions.contract, `Contrato municipal: ${contract?.title || "em preparação"} · ${getCampaignProgressLabel(contract)}`],
     [session.missions.observe, "Selecione um trem ou analise a rede"],
     [session.missions.hold, "Regule o intervalo com uma retenção"],
     [session.missions.reserve, "Envie o trem reserva para aliviar a demanda"],
@@ -399,7 +439,9 @@ function renderMission() {
     [session.missions.expansion, "Entregue uma expansão urbana na estação prioritária"],
     [session.missions.supportLine, "Ative uma segunda linha para ampliar a rede"],
     [session.missions.preventiveMaintenance, "Programe manutenção preventiva da frota"],
-    [session.missions.peakService, "Aplique uma política de reforço no pico"]
+    [session.missions.peakService, "Aplique uma política de reforço no pico"],
+    [session.missions.stationTeam, "Mobilize uma equipe de estação"],
+    [session.missions.contract, "Conclua um contrato municipal"]
   ];
   els.missionList.innerHTML = missions.map(([done, text]) => `<li class="${done ? "done" : ""}">${text}</li>`).join("");
 }
@@ -481,6 +523,40 @@ function renderPolicies() {
   </article>`).join("");
 }
 
+function renderCampaign() {
+  const campaign = session.campaign;
+  if (!campaign) return;
+  const station = getStation(session, campaign.stationId);
+  const contract = campaign.contract;
+  const teamActive = session.teamSupport.remaining > 0;
+  const goal = getCampaignGoalLabel(contract);
+  els.campaignContent.innerHTML = `<article class="campaign-item">
+    <strong>${campaign.title}</strong>
+    <p>Pressão especial em ${station?.name || "estação prioritária"} · demanda ${Math.round((campaign.demandMultiplier - 1) * 100)}% acima da base.</p>
+    <div class="contract-item ${contract.status === "completed" ? "active" : ""}"><span>CONTRATO</span><strong>${contract.title}</strong><p>${goal}</p><p class="contract-progress">${getCampaignProgressLabel(contract)}</p><small>Prêmio: ${formatCurrency(contract.rewardCents)} · +${contract.xpReward} XP</small></div>
+    <button class="text-button campaign-action" data-campaign-command="station-team" data-station-id="${station?.id || session.metrics.criticalStationId}" ${teamActive ? "disabled" : ""}>${teamActive ? `Equipe em campo · ${session.teamSupport.remaining}s` : `Mobilizar equipe · ${formatCurrency(1_200_00)}`}</button>
+  </article>`;
+}
+
+function getCampaignGoalLabel(contract) {
+  if (contract.goalType === "on_time") return `Meta: ${contract.targetValue}% de pontualidade`;
+  if (contract.goalType === "support_line") return "Meta: ativar a linha complementar";
+  if (contract.goalType === "green_energy") return "Meta: aprovar energia eficiente";
+  if (contract.goalType === "social_fare") return "Meta: ativar tarifa social";
+  if (contract.goalType === "station_team") return "Meta: mobilizar equipe no território";
+  return contract.description;
+}
+
+function getCampaignProgressLabel(contract) {
+  if (!contract) return "Aguardando contrato";
+  if (contract.goalType === "on_time") return `Agora: ${session.metrics.onTime}% / meta ${contract.targetValue}%`;
+  if (contract.goalType === "support_line") return session.network.supportLineStatus === "operating" ? "Linha complementar em operação" : "Aguardando despacho da linha complementar";
+  if (contract.goalType === "green_energy") return session.policies.greenEnergy ? "Programa já aprovado" : "Aguardando aprovação no conselho";
+  if (contract.goalType === "social_fare") return session.policies.farePlan === "social" ? "Tarifa social em vigor" : "Aguardando aprovação no conselho";
+  if (contract.goalType === "station_team") return session.missions.stationTeam ? "Equipe mobilizada: meta alcançada" : "Aguardando mobilização da equipe";
+  return contract.progress || contract.description;
+}
+
 function getTrainLineLabel(train) {
   if (train.line === "SUPORTE") return session.supportLineName;
   if (train.line === "RESERVA") return "Reserva";
@@ -501,6 +577,7 @@ function renderMap() {
   canvasContext.clearRect(0, 0, width, height);
   drawGrid(width, height);
   drawTrack(width, height);
+  drawNetworkNodes(width, height);
   drawStations(width, height);
   drawTrains(width, height);
 }
@@ -511,6 +588,16 @@ function drawGrid(width, height) {
   gradient.addColorStop(1, "#041221");
   canvasContext.fillStyle = gradient;
   canvasContext.fillRect(0, 0, width, height);
+  canvasContext.save();
+  canvasContext.fillStyle = "rgba(22, 119, 153, 0.18)";
+  canvasContext.beginPath();
+  canvasContext.moveTo(width * 0.74, 0);
+  canvasContext.bezierCurveTo(width * 0.66, height * 0.22, width * 0.92, height * 0.46, width, height * 0.54);
+  canvasContext.lineTo(width, height);
+  canvasContext.lineTo(width * 0.82, height);
+  canvasContext.bezierCurveTo(width * 0.7, height * 0.78, width * 0.88, height * 0.54, width * 0.74, 0);
+  canvasContext.fill();
+  canvasContext.restore();
   canvasContext.strokeStyle = "rgba(98, 196, 240, 0.08)";
   canvasContext.lineWidth = 1;
   for (let x = 0; x < width; x += 32) { canvasContext.beginPath(); canvasContext.moveTo(x, 0); canvasContext.lineTo(x, height); canvasContext.stroke(); }
@@ -522,11 +609,13 @@ function mapPoint(node, width, height) {
 }
 
 function drawTrack(width, height) {
-  drawRoute(session.stations, "rgba(7, 52, 84, 0.95)", "rgba(25, 179, 255, 0.88)", 18, 5, width, height);
-  if (session.supportTrain?.visible) {
-    const supportStations = session.supportTrain.route.map((id) => getStation(session, id));
-    drawRoute(supportStations, "rgba(53, 17, 86, 0.94)", "rgba(194, 105, 255, 0.94)", 13, 3.5, width, height);
-  }
+  const layout = getMetroLayout();
+  layout.routes.filter((line) => line.id !== "main" && line.id !== "support").forEach((line) => {
+    drawRoute(line.stops.map((id) => layout.nodes[id]), "rgba(4, 24, 41, 0.82)", line.color, 10, 2.5, width, height, true);
+  });
+  drawRoute(session.stations, "rgba(7, 52, 84, 0.98)", "rgba(25, 179, 255, 0.98)", 19, 5.5, width, height);
+  const supportStations = session.supportTrain.route.map((id) => getStation(session, id));
+  drawRoute(supportStations, "rgba(53, 17, 86, 0.72)", session.supportTrain?.visible ? "rgba(208, 119, 255, 0.98)" : "rgba(145, 83, 181, 0.58)", 13, session.supportTrain?.visible ? 3.8 : 2, width, height, !session.supportTrain?.visible);
   if (session.network.blockedSegments.includes("central:riverside")) {
     const central = mapPoint(session.stations.find((station) => station.id === "central"), width, height);
     const riverside = mapPoint(session.stations.find((station) => station.id === "riverside"), width, height);
@@ -543,7 +632,38 @@ function drawTrack(width, height) {
   }
 }
 
-function drawRoute(stations, underlay, color, underlayWidth, lineWidth, width, height) {
+function getMetroLayout() {
+  const activeNodes = Object.fromEntries(session.stations.map((station) => [station.id, station]));
+  const additions = {
+    "vale-central": {
+      oeste: { name: "Jardins", x: 0.08, y: 0.28 }, universidade: { name: "Universidade", x: 0.33, y: 0.17 },
+      museu: { name: "Museu", x: 0.53, y: 0.15 }, leste: { name: "Praia Leste", x: 0.86, y: 0.20 },
+      sul: { name: "Mercado", x: 0.31, y: 0.82 }, aeroporto: { name: "Aeroporto", x: 0.76, y: 0.78 }, anel: { name: "Parque", x: 0.62, y: 0.72 }
+    },
+    "porto-dourado": {
+      oeste: { name: "Farol", x: 0.09, y: 0.22 }, universidade: { name: "Arsenal", x: 0.38, y: 0.18 },
+      museu: { name: "Alfândega", x: 0.56, y: 0.16 }, leste: { name: "Baía Norte", x: 0.87, y: 0.17 },
+      sul: { name: "Marina Sul", x: 0.28, y: 0.84 }, aeroporto: { name: "Aeroporto", x: 0.79, y: 0.79 }, anel: { name: "Ilha Cívica", x: 0.67, y: 0.72 }
+    },
+    "serra-clara": {
+      oeste: { name: "Jardim Alto", x: 0.09, y: 0.20 }, universidade: { name: "Campus", x: 0.37, y: 0.16 },
+      museu: { name: "Mirante", x: 0.55, y: 0.14 }, leste: { name: "Colinas", x: 0.87, y: 0.17 },
+      sul: { name: "Terminal Sul", x: 0.31, y: 0.84 }, aeroporto: { name: "Estação Aérea", x: 0.79, y: 0.82 }, anel: { name: "Lago", x: 0.67, y: 0.73 }
+    }
+  }[session.cityId] || {};
+  return {
+    nodes: { ...activeNodes, ...additions },
+    routes: [
+      { id: "main", color: "#18b5ff", stops: ["depot", "norte", "central", "riverside", "porto"] },
+      { id: "support", color: "#d077ff", stops: ["norte", "central", "porto"] },
+      { id: "civic", color: "#ffbf45", stops: ["oeste", "norte", "universidade", "central", "anel", "riverside", "leste"] },
+      { id: "orbital", color: "#50e39a", stops: ["sul", "central", "museu", "riverside", "aeroporto"] },
+      { id: "airport", color: "#ff6478", stops: ["depot", "sul", "anel", "porto", "aeroporto"] }
+    ]
+  };
+}
+
+function drawRoute(stations, underlay, color, underlayWidth, lineWidth, width, height, dashed = false) {
   canvasContext.save();
   canvasContext.lineCap = "round";
   canvasContext.lineJoin = "round";
@@ -557,10 +677,32 @@ function drawRoute(stations, underlay, color, underlayWidth, lineWidth, width, h
   canvasContext.stroke();
   canvasContext.strokeStyle = color;
   canvasContext.lineWidth = lineWidth;
+  if (dashed) canvasContext.setLineDash([7, 8]);
   canvasContext.shadowBlur = 16;
   canvasContext.shadowColor = color;
   canvasContext.stroke();
   canvasContext.restore();
+}
+
+function drawNetworkNodes(width, height) {
+  const layout = getMetroLayout();
+  const activeStationIds = new Set(session.stations.map((station) => station.id));
+  Object.entries(layout.nodes).forEach(([id, node]) => {
+    if (activeStationIds.has(id)) return;
+    const point = mapPoint(node, width, height);
+    canvasContext.save();
+    canvasContext.fillStyle = "#0c314d";
+    canvasContext.strokeStyle = "rgba(216, 242, 255, 0.72)";
+    canvasContext.lineWidth = 1.2;
+    canvasContext.beginPath();
+    canvasContext.arc(point.x, point.y, 5.2, 0, Math.PI * 2);
+    canvasContext.fill();
+    canvasContext.stroke();
+    canvasContext.fillStyle = "rgba(203, 231, 247, 0.84)";
+    canvasContext.font = "600 9px Inter, system-ui, sans-serif";
+    canvasContext.fillText(node.name, point.x + 8, point.y - 7);
+    canvasContext.restore();
+  });
 }
 
 function drawStations(width, height) {
@@ -595,17 +737,27 @@ function drawTrains(width, height) {
   for (const train of getVisibleTrains(session)) {
     const position = getTrainPosition(session, train);
     const point = { x: position.x * width, y: position.y * height };
+    const nextStation = getStation(session, getTrainTarget(train));
+    const direction = Math.atan2(nextStation.y - position.y, nextStation.x - position.x);
     const isSelected = selected?.type === "train" && selected.id === train.id;
     const paused = ["HELD", "WAITING_SIGNAL", "DISPATCHING"].includes(train.status) || train.faultActive;
     canvasContext.save();
     canvasContext.translate(point.x, point.y);
-    canvasContext.rotate(0.32);
+    canvasContext.rotate(direction);
     canvasContext.shadowBlur = isSelected ? 22 : 12;
     canvasContext.shadowColor = train.faultActive ? "#ff596b" : paused ? "#ffbf45" : "#1bd4ff";
     canvasContext.fillStyle = train.faultActive ? "#ff8797" : paused ? "#f5be48" : "#daf5ff";
-    canvasContext.fillRect(-8, -5, 16, 10);
+    canvasContext.beginPath();
+    canvasContext.roundRect(-11, -5.5, 22, 11, 4);
+    canvasContext.fill();
     canvasContext.fillStyle = "#0c6ba7";
-    canvasContext.fillRect(-3, -3, 9, 6);
+    canvasContext.beginPath();
+    canvasContext.roundRect(1, -3.5, 7, 7, 2);
+    canvasContext.fill();
+    canvasContext.fillStyle = "#48dcff";
+    canvasContext.fillRect(7, -2.4, 2.5, 4.8);
+    canvasContext.fillStyle = "rgba(3, 28, 52, 0.78)";
+    canvasContext.fillRect(-7, -3.5, 5.5, 7);
     canvasContext.restore();
     if (isSelected) {
       canvasContext.strokeStyle = "#ffffff";
@@ -648,6 +800,64 @@ function formatCurrency(cents) {
 }
 
 function announce(message) { els.live.textContent = message; }
+
+function loadAccessibilityPreferences() {
+  const defaults = { highContrast: false, reducedMotion: false, largeText: false, audio: false };
+  try {
+    return { ...defaults, ...JSON.parse(localStorage.getItem(accessibilityStorageKey) || "{}") };
+  } catch {
+    return defaults;
+  }
+}
+
+function saveAccessibilityPreferences() {
+  try { localStorage.setItem(accessibilityStorageKey, JSON.stringify(accessibility)); } catch { /* Preferências são opcionais. */ }
+}
+
+function applyAccessibilityPreferences() {
+  const root = document.documentElement;
+  root.classList.toggle("high-contrast", accessibility.highContrast);
+  root.classList.toggle("reduced-motion", accessibility.reducedMotion);
+  root.classList.toggle("large-text", accessibility.largeText);
+  document.querySelectorAll("[data-accessibility-setting]").forEach((button) => {
+    const enabled = Boolean(accessibility[button.dataset.accessibilitySetting]);
+    button.setAttribute("aria-pressed", String(enabled));
+    button.classList.toggle("active", enabled);
+  });
+}
+
+function setAccessibilityPanel(open) {
+  els.accessibilityPanel.hidden = !open;
+  els.accessibilityToggle.setAttribute("aria-expanded", String(open));
+  if (open) els.accessibilityPanel.querySelector("[data-accessibility-setting]")?.focus();
+  else els.accessibilityToggle.focus();
+}
+
+function playOperationalCue(kind) {
+  if (!accessibility.audio) return;
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContext) return;
+  try {
+    audioContext ||= new AudioContext();
+    const oscillator = audioContext.createOscillator();
+    const gain = audioContext.createGain();
+    const now = audioContext.currentTime;
+    const frequency = kind === "warning" ? 220 : kind === "enabled" ? 660 : 520;
+    oscillator.frequency.setValueAtTime(frequency, now);
+    oscillator.frequency.exponentialRampToValueAtTime(frequency * (kind === "warning" ? 0.75 : 1.25), now + 0.12);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.05, now + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.15);
+    oscillator.connect(gain).connect(audioContext.destination);
+    oscillator.start(now);
+    oscillator.stop(now + 0.16);
+  } catch { /* Navegadores podem bloquear áudio até uma interação válida. */ }
+}
+
+function registerServiceWorker() {
+  if (!("serviceWorker" in navigator)) return;
+  window.addEventListener("load", () => navigator.serviceWorker.register("./service-worker.js").catch(() => {}), { once: true });
+}
 
 function scheduleSave() {
   window.clearTimeout(saveTimer);
