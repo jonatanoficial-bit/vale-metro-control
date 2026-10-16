@@ -206,6 +206,37 @@ h2 { margin-bottom: 0; font-size: 1rem; }
 .policy-item .text-button { max-width: 8.2rem; padding: 0.25rem; font-size: 0.61rem; text-align: right; }
 .policy-item .text-button[disabled] { cursor: default; color: var(--green); opacity: 0.82; }
 .campaign-content { display: grid; gap: 0.48rem; margin-top: 0.58rem; }
+.career-progress-card, .weekly-card, .specialization-choice, .specialization-active, .specialization-locked { padding: 0.68rem; border: 1px solid rgba(103, 171, 209, 0.22); border-radius: 0.55rem; background: rgba(5, 25, 40, 0.62); }
+.career-rank { display: grid; gap: 0.18rem; }
+.career-rank span, .career-badges > span, .weekly-card > div > span, .specialization-choice span, .specialization-active span, .specialization-locked span { color: var(--cyan); font-size: 0.52rem; font-weight: 900; letter-spacing: 0.1em; }
+.career-rank strong { color: #eff9ff; font-size: 0.82rem; }
+.career-rank small { color: #a9c2d1; font-size: 0.6rem; }
+.rank-progress { height: 0.32rem; margin-top: 0.58rem; overflow: hidden; border-radius: 999px; background: #1a3548; }
+.rank-progress i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #49bce9, #7ee0d8); box-shadow: 0 0 0.7rem rgba(73, 188, 233, 0.65); }
+.career-badges { display: flex; flex-wrap: wrap; gap: 0.3rem; align-items: center; margin: 0.62rem 0 0; }
+.career-badges b { padding: 0.23rem 0.34rem; border: 1px solid rgba(97, 212, 178, 0.37); border-radius: 999px; background: rgba(19, 105, 77, 0.16); color: #c7f4e3; font-size: 0.55rem; }
+.weekly-card { display: grid; gap: 0.52rem; }
+.weekly-card > div { display: grid; gap: 0.12rem; }
+.weekly-card > div strong, .specialization-choice > div > strong, .specialization-active strong, .specialization-locked strong { color: #eaf5fb; font-size: 0.73rem; }
+.weekly-card ul { display: grid; gap: 0.36rem; margin: 0; padding: 0; list-style: none; }
+.weekly-goal { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 0.45rem; padding: 0.46rem 0; border-top: 1px solid rgba(128, 167, 192, 0.15); }
+.weekly-goal:first-child { border-top: 0; padding-top: 0; }
+.weekly-goal strong, .weekly-goal span, .weekly-goal small { display: block; }
+.weekly-goal strong { color: #dbeaf2; font-size: 0.65rem; }
+.weekly-goal span, .weekly-goal small { margin-top: 0.1rem; color: var(--muted); font-size: 0.56rem; line-height: 1.32; }
+.weekly-goal b { color: #8fd8fa; font-size: 0.68rem; font-variant-numeric: tabular-nums; }
+.weekly-goal small { grid-column: 1 / -1; }
+.weekly-goal.done strong, .weekly-goal.done b, .weekly-goal.done small { color: var(--green); }
+.specialization-choice { display: grid; gap: 0.58rem; }
+.specialization-choice p, .specialization-active p, .specialization-locked p { margin: 0.22rem 0 0; color: var(--muted); font-size: 0.59rem; line-height: 1.4; }
+.specialization-options { display: grid; gap: 0.34rem; }
+.specialization-option { display: grid; grid-template-columns: 4.5rem 1fr; gap: 0.42rem; align-items: start; width: 100%; padding: 0.46rem; border: 1px solid rgba(89, 169, 210, 0.32); border-radius: 0.42rem; background: rgba(10, 47, 70, 0.54); color: #d9edf7; cursor: pointer; text-align: left; }
+.specialization-option:hover, .specialization-option:focus-visible { border-color: #65bce8; background: rgba(16, 72, 104, 0.72); outline: none; }
+.specialization-option strong { color: #f1faff; font-size: 0.64rem; }
+.specialization-option span { color: #a5c0d0; font-size: 0.55rem; line-height: 1.35; }
+.specialization-active { border-color: rgba(80, 227, 154, 0.35); background: rgba(16, 101, 72, 0.14); }
+.specialization-active strong, .specialization-active p { display: block; }
+.turn-rank { margin-top: 0.5rem !important; color: #8fd8fa; font-weight: 800; }
 .campaign-item > strong { display: block; color: #eaf8ff; font-size: 0.75rem; }
 .campaign-item > p { margin: 0.18rem 0 0.45rem; color: var(--muted); font-size: 0.62rem; line-height: 1.38; }
 .contract-item { padding: 0.44rem 0.5rem; border: 1px solid rgba(126, 204, 245, 0.16); border-radius: 0.5rem; background: rgba(3, 23, 41, 0.54); }

@@ -1,6 +1,35 @@
 const route = ["depot", "norte", "central", "riverside", "porto"];
 const supportRoute = ["norte", "central", "porto"];
 
+export const careerRanks = [
+  { level: 1, title: "Operador em formação", minXp: 0 },
+  { level: 2, title: "Controlador de tráfego", minXp: 75 },
+  { level: 3, title: "Supervisor de rede", minXp: 200 },
+  { level: 4, title: "Gerente metropolitano", minXp: 420 },
+  { level: 5, title: "Diretor de operações", minXp: 700 }
+];
+
+export const specializationCatalog = [
+  {
+    id: "dispatch",
+    title: "Despacho de rede",
+    shortTitle: "Despacho",
+    perk: "Confirmações de via chegam 1 s antes e a prioridade de recuperação dura 25 s a mais."
+  },
+  {
+    id: "fleet",
+    title: "Engenharia de frota",
+    shortTitle: "Frota",
+    perk: "Manutenção preventiva custa menos e devolve o trem em condição máxima."
+  },
+  {
+    id: "network",
+    title: "Gestão de estações",
+    shortTitle: "Estações",
+    perk: "Equipes de estação conseguem orientar mais passageiros a cada mobilização."
+  }
+];
+
 export const cityProfiles = [
   {
     id: "vale-central",
@@ -124,6 +153,88 @@ function createDispatchBoard() {
   return { nextId: 1, messages: [] };
 }
 
+export function getCareerRank(totalXp = 0) {
+  const rankIndex = careerRanks.reduce((current, rank, index) => (totalXp >= rank.minXp ? index : current), 0);
+  const rank = careerRanks[rankIndex];
+  const next = careerRanks[rankIndex + 1] || null;
+  return { ...rank, next, progress: next ? Math.min(1, (totalXp - rank.minXp) / (next.minXp - rank.minXp)) : 1 };
+}
+
+export function getPreventiveMaintenanceCost(session) {
+  return getCareerSpecialization(session) === "fleet" ? 1_650_00 : 2_200_00;
+}
+
+function getCareerWeek(day = 1) {
+  return Math.floor((Math.max(1, day) - 1) / 5) + 1;
+}
+
+function createWeeklyProgress(day = 1) {
+  return {
+    week: getCareerWeek(day),
+    goals: [
+      { id: "safe-dispatch", title: "Despacho seguro", description: "Confirme 3 autorizações de via.", target: 3, progress: 0, rewardXp: 18, rewardCents: 2_500_00, badge: "Selo de despacho seguro", completed: false },
+      { id: "fleet-ready", title: "Frota confiável", description: "Programe 2 manutenções preventivas.", target: 2, progress: 0, rewardXp: 20, rewardCents: 3_200_00, badge: "Selo de frota confiável", completed: false },
+      { id: "stable-turns", title: "Turnos estáveis", description: "Conclua 2 turnos com nota B ou superior.", target: 2, progress: 0, rewardXp: 26, rewardCents: 4_000_00, badge: "Selo de serviço estável", completed: false }
+    ]
+  };
+}
+
+function normalizeWeeklyProgress(weekly, day = 1) {
+  const fresh = createWeeklyProgress(day);
+  if (!weekly || weekly.week !== fresh.week || !Array.isArray(weekly.goals)) return fresh;
+  return {
+    ...fresh,
+    ...weekly,
+    week: fresh.week,
+    goals: fresh.goals.map((goal) => {
+      const saved = weekly.goals.find((item) => item.id === goal.id);
+      return saved ? { ...goal, ...saved, progress: Math.min(goal.target, Math.max(0, saved.progress ?? 0)) } : goal;
+    })
+  };
+}
+
+function normalizeOperatorProfile(operator, totalXp = 0) {
+  const rank = getCareerRank(totalXp);
+  return {
+    specialization: null,
+    badges: [],
+    ...operator,
+    badges: Array.isArray(operator?.badges) ? operator.badges : [],
+    level: rank.level,
+    title: rank.title
+  };
+}
+
+function getCareerSpecialization(session) {
+  return session.career?.operator?.specialization || null;
+}
+
+function syncOperatorProgress(session) {
+  if (!session.career) return null;
+  session.career.operator = normalizeOperatorProfile(session.career.operator, session.career.totalXp);
+  return getCareerRank(session.career.totalXp);
+}
+
+function advanceWeeklyGoal(session, goalId, amount = 1) {
+  if (!session.career || amount <= 0) return null;
+  const weekly = session.career.weekly = normalizeWeeklyProgress(session.career.weekly, session.career.day);
+  const goal = weekly.goals.find((item) => item.id === goalId);
+  if (!goal || goal.completed) return null;
+  goal.progress = Math.min(goal.target, goal.progress + amount);
+  if (goal.progress < goal.target) return null;
+  goal.completed = true;
+  goal.completedAt = session.time;
+  session.balanceCents += goal.rewardCents;
+  session.revenueCents += goal.rewardCents;
+  session.career.balanceCents = session.balanceCents;
+  session.career.totalXp += goal.rewardXp;
+  const badges = session.career.operator.badges;
+  if (!badges.includes(goal.badge)) badges.push(goal.badge);
+  syncOperatorProgress(session);
+  pushLog(session, `Meta semanal concluída: ${goal.title}. ${formatCurrency(goal.rewardCents)} e +${goal.rewardXp} XP liberados.`, "info");
+  return { title: goal.title, rewardCents: goal.rewardCents, rewardXp: goal.rewardXp, badge: goal.badge };
+}
+
 export function createInitialSession(mode = "career", cityId = "vale-central", careerProfile = null) {
   const city = getCityProfile(cityId);
   const balanceCents = mode === "sandbox" ? 999_999_00 : careerProfile?.balanceCents ?? city.startingBalanceCents;
@@ -138,7 +249,7 @@ export function createInitialSession(mode = "career", cityId = "vale-central", c
     if (station) station.capacity += projects.riversideExpansion.capacityGain;
   }
   const session = {
-    schemaVersion: 10,
+    schemaVersion: 11,
     mode,
     time: 6 * 3600,
     timeScale: 1,
@@ -230,6 +341,8 @@ export function createInitialSession(mode = "career", cityId = "vale-central", c
       policyState,
       campaignState: careerProfile?.campaignState ?? { chapterIndex: 0, completedContracts: [] },
       tutorialCompleted: careerProfile?.tutorialCompleted ?? false,
+      operator: normalizeOperatorProfile(careerProfile?.operator, careerProfile?.totalXp ?? 0),
+      weekly: normalizeWeeklyProgress(careerProfile?.weekly, careerProfile?.day ?? 1),
       balanceCents
     } : null,
     turn: {
@@ -256,7 +369,7 @@ export function createInitialSession(mode = "career", cityId = "vale-central", c
 
 export function normalizeSession(session) {
   const city = getCityProfile(session.cityId || "vale-central");
-  session.schemaVersion = 10;
+  session.schemaVersion = 11;
   session.cityId ??= city.id;
   session.city ??= city.name;
   session.lineName ??= city.lineName;
@@ -305,6 +418,8 @@ export function normalizeSession(session) {
       balanceCents: session.balanceCents,
       ...session.career
     };
+    session.career.operator = normalizeOperatorProfile(session.career.operator, session.career.totalXp);
+    session.career.weekly = normalizeWeeklyProgress(session.career.weekly, session.career.day);
   }
   session.tutorial = {
     status: session.career?.tutorialCompleted ? "acknowledged" : "intro",
@@ -490,6 +605,9 @@ export function applyCommand(session, command) {
     case "SET_DISPATCH_PRIORITY":
       result = setDispatchPriority(session, command.trainId);
       break;
+    case "SELECT_SPECIALIZATION":
+      result = selectSpecialization(session, command.specializationId);
+      break;
     case "DISPATCH_RESERVE":
       result = dispatchReserve(session);
       break;
@@ -627,7 +745,7 @@ function requestRouteAuthorization(session, trainId) {
   if (isSegmentBlocked(session, train, train.segmentIndex)) return reject("O trecho seguinte está bloqueado; nenhuma autorização segura pode ser emitida.");
   train.dispatch.routeStatus = "awaiting-confirmation";
   train.dispatch.routeSegment = segment;
-  train.dispatch.acknowledgementRemaining = 4;
+  train.dispatch.acknowledgementRemaining = getCareerSpecialization(session) === "dispatch" ? 3 : 4;
   pushDispatchMessage(session, {
     from: "OCC-01",
     to: train.id,
@@ -647,8 +765,9 @@ function setDispatchPriority(session, trainId) {
   }
   if (train.dispatch.priorityRemaining > 0) return reject("A prioridade de recuperação já está ativa para essa composição.");
   train.dispatch.priority = "recovery";
-  train.dispatch.priorityRemaining = 70;
-  train.delaySec = Math.max(0, train.delaySec - 8);
+  const dispatchSpecialist = getCareerSpecialization(session) === "dispatch";
+  train.dispatch.priorityRemaining = dispatchSpecialist ? 95 : 70;
+  train.delaySec = Math.max(0, train.delaySec - (dispatchSpecialist ? 12 : 8));
   session.missions.dispatchPriority = true;
   session.xp += 8;
   pushDispatchMessage(session, {
@@ -657,9 +776,22 @@ function setDispatchPriority(session, trainId) {
     trainId: train.id,
     priority: "priority",
     direction: "outgoing",
-    text: "Prioridade de recuperação autorizada. Preserve margem de segurança e reporte qualquer restrição."
+    text: `Prioridade de recuperação autorizada por ${train.dispatch.priorityRemaining} s. Preserve margem de segurança e reporte qualquer restrição.`
   });
-  return accept(`${train.id} recebeu prioridade de recuperação por 70 s de simulação.`, { trainId });
+  return accept(`${train.id} recebeu prioridade de recuperação por ${train.dispatch.priorityRemaining} s de simulação.`, { trainId });
+}
+
+function selectSpecialization(session, specializationId) {
+  if (!session.career) return reject("Especializações estão disponíveis apenas no modo carreira.");
+  const specialization = specializationCatalog.find((item) => item.id === specializationId);
+  if (!specialization) return reject("Especialização não reconhecida.");
+  const rank = getCareerRank(session.career.totalXp);
+  if (rank.level < 2) return reject("Alcance o nível 2 de operador para escolher uma especialização.");
+  if (session.career.operator.specialization) return reject("A especialização desta carreira já foi definida.");
+  session.career.operator.specialization = specialization.id;
+  session.xp += 12;
+  pushLog(session, `Especialização escolhida: ${specialization.title}. ${specialization.perk}`, "info");
+  return accept(`${specialization.title} ativada. O benefício já vale para os próximos comandos.`, { specializationId });
 }
 
 function dispatchReserve(session) {
@@ -697,7 +829,7 @@ function activateSupportLine(session) {
 
 function schedulePreventiveMaintenance(session, trainId) {
   const train = getAllTrains(session).find((item) => item.id === trainId);
-  const cost = 2_200_00;
+  const cost = getPreventiveMaintenanceCost(session);
   if (!train || !train.visible) return reject("Esse trem não está disponível para manutenção preventiva.");
   if (train.faultActive) return reject("Resolva a falha ativa antes de programar a manutenção preventiva.");
   if (train.status === "MAINTENANCE") return reject("Esse trem já está na janela de manutenção.");
@@ -712,6 +844,7 @@ function schedulePreventiveMaintenance(session, trainId) {
   train.delaySec = Math.max(0, train.delaySec - 8);
   session.missions.preventiveMaintenance = true;
   session.xp += 18;
+  advanceWeeklyGoal(session, "fleet-ready");
   pushLog(session, `${train.id}: manutenção preventiva iniciada. Retorno previsto em 26 s de simulação.`, "info");
   return accept(`${train.id} entrou em manutenção preventiva; condição será restaurada.`, { projectedCost: cost });
 }
@@ -778,7 +911,7 @@ function deployStationTeam(session, stationId) {
   if (session.teamSupport.remaining > 0) return reject("Uma equipe de estação já está mobilizada neste turno.");
   if (session.staff.stationTeams < 1) return reject("Não há equipe de estação disponível para mobilização.");
   if (session.balanceCents < cost) return reject("Saldo insuficiente para mobilizar a equipe de estação.");
-  const assisted = Math.min(station.queue, 46);
+  const assisted = Math.min(station.queue, getCareerSpecialization(session) === "network" ? 64 : 46);
   station.queue -= assisted;
   session.staff.stationTeams -= 1;
   session.teamSupport = { stationId: station.id, remaining: 90 };
@@ -865,6 +998,12 @@ function completeTurn(session) {
   session.xp += xpReward;
   session.reputation = Math.max(0, Math.min(100, session.reputation + (grade === "A" ? 5 : grade === "B" ? 2 : grade === "C" ? 0 : -4)));
   session.career.totalXp += session.xp;
+  const weeklyRewards = [];
+  if (["A", "B"].includes(grade)) {
+    const weeklyReward = advanceWeeklyGoal(session, "stable-turns");
+    if (weeklyReward) weeklyRewards.push(weeklyReward);
+  }
+  const rank = syncOperatorProgress(session);
   session.career.completedTurns += 1;
   session.career.balanceCents = session.balanceCents;
   session.career.reputation = session.reputation;
@@ -890,6 +1029,9 @@ function completeTurn(session) {
     score,
     rewardCents,
     xpReward,
+    weeklyRewards,
+    operatorLevel: rank?.level,
+    operatorTitle: rank?.title,
     onTime: session.metrics.onTime,
     incidentsOpen: activeIncidents.length,
     contract: contractResult
@@ -995,6 +1137,7 @@ function updateDispatch(session) {
           dispatch.authorizationRemaining = 70;
           session.missions.routeAuthorization = true;
           session.xp += 6;
+          advanceWeeklyGoal(session, "safe-dispatch");
           pushDispatchMessage(session, {
             from: train.id,
             to: "OCC-01",
@@ -1058,7 +1201,7 @@ function advanceTrain(session, train) {
     train.maintenanceRemaining -= 1;
     if (train.maintenanceRemaining <= 0) {
       train.maintenanceRemaining = 0;
-      train.condition = 98;
+      train.condition = getCareerSpecialization(session) === "fleet" ? 100 : 98;
       train.status = "DWELLING";
       train.dwellRemaining = 7;
       session.staff.maintenanceAvailable += 1;

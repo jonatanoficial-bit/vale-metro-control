@@ -3,6 +3,8 @@ import {
   cityProfiles,
   createInitialSession,
   formatTime,
+  getCareerRank,
+  getPreventiveMaintenanceCost,
   getAllTrains,
   getActiveIncidents,
   getStation,
@@ -11,8 +13,9 @@ import {
   getTrainTarget,
   getVisibleTrains,
   normalizeSession,
+  specializationCatalog,
   tickSession
-} from "./simulation.js?v=4";
+} from "./simulation.js?v=6";
 
 const els = {
   landing: document.querySelector("#landing-screen"),
@@ -114,10 +117,13 @@ async function init() {
     runCommand({ type: button.dataset.policyCommand });
   });
   els.campaignContent.addEventListener("click", (event) => {
-    const button = event.target.closest("[data-campaign-command]");
+    const button = event.target.closest("[data-campaign-command], [data-career-command]");
     if (!button || button.disabled) return;
     if (button.dataset.campaignCommand === "station-team") {
       runCommand({ type: "DEPLOY_STATION_TEAM", stationId: button.dataset.stationId });
+    }
+    if (button.dataset.careerCommand === "specialization") {
+      runCommand({ type: "SELECT_SPECIALIZATION", specializationId: button.dataset.specialization });
     }
   });
   els.accessibilityToggle.addEventListener("click", () => setAccessibilityPanel(els.accessibilityPanel.hidden));
@@ -170,6 +176,7 @@ async function init() {
 function renderCityOptions() {
   els.cityOptions.innerHTML = cityProfiles.map((city) => {
     const career = careerProfiles[city.id];
+    const rank = getCareerRank(career?.totalXp ?? 0);
     const completedContracts = career?.campaignState?.completedContracts?.length ?? 0;
     const nextChapter = city.campaign[(career?.campaignState?.chapterIndex ?? 0) % city.campaign.length];
     const progress = career
@@ -179,7 +186,7 @@ function renderCityOptions() {
       <span class="city-difficulty">${city.difficulty}</span>
       <strong>${city.name}</strong>
       <p>${city.description}</p>
-      <small>${city.lineName} · caixa inicial ${formatCurrency(career?.balanceCents ?? city.startingBalanceCents)}<br>Próximo contrato: ${nextChapter.contract.title} · ${completedContracts}/${city.campaign.length} concluídos</small>
+      <small>${city.lineName} · caixa inicial ${formatCurrency(career?.balanceCents ?? city.startingBalanceCents)}<br>${rank.title} · nível ${rank.level}<br>Próximo contrato: ${nextChapter.contract.title} · ${completedContracts}/${city.campaign.length} concluídos</small>
       <em>${progress}</em>
     </button>`;
   }).join("");
@@ -344,7 +351,11 @@ function renderTurnSummary(summary) {
   const contractText = contract?.completed
     ? `Contrato concluído: ${contract.title} · ${formatCurrency(contract.rewardCents)} · +${contract.xpReward} XP`
     : `Contrato pendente: ${contract?.title || "municipal"} · ${contract?.progress || "meta não atingida"}`;
-  els.turnSummaryContent.innerHTML = `<div class="turn-grade"><b>${summary.grade}</b><div><strong>${summary.score}% de desempenho operacional</strong><p>${summary.onTime}% de pontualidade · ${summary.incidentsOpen} ocorrência${summary.incidentsOpen === 1 ? "" : "s"} em aberto</p><p>Recompensa: ${formatCurrency(summary.rewardCents)} · +${summary.xpReward} XP de desempenho</p><p class="contract-result ${contract?.completed ? "success" : "pending"}">${contractText}</p></div></div>`;
+  const weeklyText = summary.weeklyRewards?.length
+    ? `<p class="contract-result success">Meta semanal concluída: ${summary.weeklyRewards.map((reward) => `${reward.title} · ${formatCurrency(reward.rewardCents)} · +${reward.rewardXp} XP`).join(" · ")}</p>`
+    : "";
+  const operatorText = summary.operatorLevel ? `<p class="turn-rank">Carreira: nível ${summary.operatorLevel} · ${summary.operatorTitle}</p>` : "";
+  els.turnSummaryContent.innerHTML = `<div class="turn-grade"><b>${summary.grade}</b><div><strong>${summary.score}% de desempenho operacional</strong><p>${summary.onTime}% de pontualidade · ${summary.incidentsOpen} ocorrência${summary.incidentsOpen === 1 ? "" : "s"} em aberto</p><p>Recompensa: ${formatCurrency(summary.rewardCents)} · +${summary.xpReward} XP de desempenho</p><p class="contract-result ${contract?.completed ? "success" : "pending"}">${contractText}</p>${weeklyText}${operatorText}</div></div>`;
   els.turnSummary.hidden = false;
 }
 
@@ -556,7 +567,7 @@ function renderContext() {
       </section>
       <div class="action-stack">
         ${incident ? `<button class="button danger" data-command="maintenance" data-incident="${incident.id}" ${incident.status === "responding" ? "disabled" : ""}>${incident.status === "responding" ? "Equipe em resposta" : "Enviar manutenção"}</button>` : ""}
-        ${maintenanceRecommended ? `<button class="button primary" data-command="preventive" data-train="${train.id}">Manutenção preventiva · ${formatCurrency(2_200_00)}</button>` : ""}
+        ${maintenanceRecommended ? `<button class="button primary" data-command="preventive" data-train="${train.id}">Manutenção preventiva · ${formatCurrency(getPreventiveMaintenanceCost(session))}</button>` : ""}
         ${train.status === "MAINTENANCE" ? `<button class="button secondary" disabled>Manutenção em curso · ${train.maintenanceRemaining}s</button>` : ""}
         ${train.status === "HELD"
           ? `<button class="button primary" data-command="release" data-train="${train.id}">Liberar trem</button>`
@@ -628,6 +639,8 @@ function renderMission() {
     [session.missions.preventiveMaintenance, "Programe manutenção preventiva da frota"],
     [session.missions.peakService, "Aplique uma política de reforço no pico"],
     [session.missions.stationTeam, "Mobilize uma equipe de estação"],
+    [session.missions.routeAuthorization, "Conclua uma autorização de via confirmada pelo condutor"],
+    [session.missions.dispatchPriority, "Aplique prioridade depois da liberação de via"],
     [session.missions.contract, "Conclua um contrato municipal"]
   ];
   els.missionList.innerHTML = missions.map(([done, text]) => `<li class="${done ? "done" : ""}">${text}</li>`).join("");
@@ -717,7 +730,36 @@ function renderCampaign() {
   const contract = campaign.contract;
   const teamActive = session.teamSupport.remaining > 0;
   const goal = getCampaignGoalLabel(contract);
-  els.campaignContent.innerHTML = `<article class="campaign-item">
+  const career = session.career;
+  if (!career) {
+    els.campaignContent.innerHTML = `<article class="campaign-item"><strong>Modo sandbox</strong><p>Contratos e cenários podem ser testados livremente. Inicie uma carreira para liberar níveis, especializações e metas semanais.</p></article>`;
+    return;
+  }
+  const rank = getCareerRank(career.totalXp);
+  const specialization = specializationCatalog.find((item) => item.id === career.operator.specialization);
+  const xpUntilNext = rank.next ? Math.max(0, rank.next.minXp - career.totalXp) : 0;
+  const progressPercent = Math.round(rank.progress * 100);
+  const weeklyGoals = career.weekly.goals.map((item) => `<li class="weekly-goal ${item.completed ? "done" : ""}">
+    <div><strong>${item.title}</strong><span>${item.description}</span></div>
+    <b>${item.progress}/${item.target}</b>
+    <small>${item.completed ? `Recompensa liberada · ${item.badge}` : `${formatCurrency(item.rewardCents)} · +${item.rewardXp} XP`}</small>
+  </li>`).join("");
+  const specializationSection = specialization
+    ? `<section class="specialization-active"><span>ESPECIALIZAÇÃO ATIVA</span><strong>${specialization.title}</strong><p>${specialization.perk}</p></section>`
+    : rank.level >= 2
+      ? `<section class="specialization-choice"><div><span>ESCOLHA DE CARREIRA</span><strong>Defina seu foco operacional</strong><p>A escolha vale para esta carreira e libera uma vantagem permanente.</p></div><div class="specialization-options">${specializationCatalog.map((item) => `<button class="specialization-option" data-career-command="specialization" data-specialization="${item.id}"><strong>${item.shortTitle}</strong><span>${item.perk}</span></button>`).join("")}</div></section>`
+      : `<section class="specialization-locked"><span>PRÓXIMO DESBLOQUEIO</span><strong>Especialização no nível 2</strong><p>Faltam ${xpUntilNext} XP de carreira para escolher entre Despacho, Frota ou Estações.</p></section>`;
+  const badges = career.operator.badges.length
+    ? `<p class="career-badges"><span>DISTINTIVOS</span>${career.operator.badges.map((badge) => `<b>${badge}</b>`).join("")}</p>`
+    : "";
+  els.campaignContent.innerHTML = `<section class="career-progress-card">
+      <div class="career-rank"><span>NÍVEL ${rank.level}</span><strong>${rank.title}</strong><small>${career.totalXp} XP total${rank.next ? ` · ${xpUntilNext} XP para ${rank.next.title}` : " · nível máximo"}</small></div>
+      <div class="rank-progress" role="progressbar" aria-label="Progresso do nível" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progressPercent}"><i style="width:${progressPercent}%"></i></div>
+      ${badges}
+    </section>
+    ${specializationSection}
+    <section class="weekly-card"><div><span>METAS DA SEMANA ${career.weekly.week}</span><strong>Rotina de operador</strong></div><ul>${weeklyGoals}</ul></section>
+    <article class="campaign-item">
     <strong>${campaign.title}</strong>
     <p>Pressão especial em ${station?.name || "estação prioritária"} · demanda ${Math.round((campaign.demandMultiplier - 1) * 100)}% acima da base.</p>
     <div class="contract-item ${contract.status === "completed" ? "active" : ""}"><span>CONTRATO</span><strong>${contract.title}</strong><p>${goal}</p><p class="contract-progress">${getCampaignProgressLabel(contract)}</p><small>Prêmio: ${formatCurrency(contract.rewardCents)} · +${contract.xpReward} XP</small></div>

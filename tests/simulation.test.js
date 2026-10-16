@@ -333,3 +333,46 @@ test("saves anteriores recebem estado de despacho e mensagens iniciais", () => {
   assert.ok(resumed.dispatch.messages.length > 0);
   assert.equal(resumed.trains[0].dispatch.routeStatus, "not-requested");
 });
+
+test("nível de carreira desbloqueia especialização de despacho com efeito operacional", () => {
+  const session = createInitialSession("career", "vale-central", { totalXp: 75 });
+  const train = session.trains.find((item) => item.id === "VM-103");
+  const chosen = applyCommand(session, { id: "choose-dispatch", type: "SELECT_SPECIALIZATION", specializationId: "dispatch" });
+  const requested = applyCommand(session, { id: "route-specialist", type: "REQUEST_ROUTE_AUTHORIZATION", trainId: train.id });
+
+  assert.equal(session.career.operator.level, 2);
+  assert.equal(chosen.accepted, true);
+  assert.equal(session.career.operator.specialization, "dispatch");
+  assert.equal(requested.accepted, true);
+  assert.equal(train.dispatch.acknowledgementRemaining, 3);
+  tickSession(session, 3);
+  assert.equal(train.dispatch.routeStatus, "authorized");
+  const priority = applyCommand(session, { id: "priority-specialist", type: "SET_DISPATCH_PRIORITY", trainId: train.id });
+  assert.equal(priority.accepted, true);
+  assert.equal(train.dispatch.priorityRemaining, 95);
+});
+
+test("especialização de frota reduz custo, melhora a condição e avança a meta semanal", () => {
+  const session = createInitialSession("career", "vale-central", { totalXp: 75 });
+  const train = session.trains.find((item) => item.id === "VM-102");
+  const initialBalance = session.balanceCents;
+  applyCommand(session, { id: "choose-fleet", type: "SELECT_SPECIALIZATION", specializationId: "fleet" });
+  const maintenance = applyCommand(session, { id: "fleet-maintenance", type: "SCHEDULE_PREVENTIVE_MAINTENANCE", trainId: train.id });
+
+  assert.equal(maintenance.accepted, true);
+  assert.equal(initialBalance - session.balanceCents, 1_650_00);
+  assert.equal(session.career.weekly.goals.find((goal) => goal.id === "fleet-ready").progress, 1);
+  tickSession(session, 26);
+  assert.equal(train.condition, 100);
+});
+
+test("saves anteriores recebem nível e metas semanais da carreira", () => {
+  const legacy = createInitialSession("career", "vale-central", { totalXp: 210, day: 6 });
+  delete legacy.career.operator;
+  delete legacy.career.weekly;
+  const resumed = normalizeSession(legacy);
+
+  assert.equal(resumed.career.operator.level, 3);
+  assert.equal(resumed.career.weekly.week, 2);
+  assert.equal(resumed.career.weekly.goals.length, 3);
+});
