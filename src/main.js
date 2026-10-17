@@ -4,6 +4,7 @@ import {
   createInitialSession,
   formatTime,
   getCareerRank,
+  getMaintenanceRecommendation,
   getPreventiveMaintenanceCost,
   getAllTrains,
   getActiveIncidents,
@@ -13,9 +14,11 @@ import {
   getTrainTarget,
   getVisibleTrains,
   normalizeSession,
+  fleetPartCatalog,
+  fleetSystemLabels,
   specializationCatalog,
   tickSession
-} from "./simulation.js?v=6";
+} from "./simulation.js?v=8";
 
 const els = {
   landing: document.querySelector("#landing-screen"),
@@ -25,9 +28,11 @@ const els = {
   game: document.querySelector("#game-screen"),
   centralView: document.querySelector("#central-view"),
   networkView: document.querySelector("#network-view"),
+  fleetView: document.querySelector("#fleet-view"),
   detailScreen: document.querySelector("#game-detail-screen"),
   navigation: document.querySelector(".game-navigation"),
   networkOverview: document.querySelector("#network-overview"),
+  fleetGarage: document.querySelector("#fleet-garage"),
   dispatchFeed: document.querySelector("#dispatch-feed"),
   canvas: document.querySelector("#network-canvas"),
   clock: document.querySelector("#clock-value"),
@@ -125,6 +130,15 @@ async function init() {
     if (button.dataset.careerCommand === "specialization") {
       runCommand({ type: "SELECT_SPECIALIZATION", specializationId: button.dataset.specialization });
     }
+  });
+  els.fleetGarage.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-fleet-command]");
+    if (!button || button.disabled) return;
+    const command = button.dataset.fleetCommand;
+    if (command === "inspect") runCommand({ type: "INSPECT_TRAIN", trainId: button.dataset.trainId });
+    if (command === "service") runCommand({ type: "PERFORM_TARGETED_SERVICE", trainId: button.dataset.trainId });
+    if (command === "order") runCommand({ type: "ORDER_FLEET_PART", partId: button.dataset.partId });
+    if (command === "roster") runCommand({ type: "ACTIVATE_EXTENDED_MAINTENANCE_ROSTER" });
   });
   els.accessibilityToggle.addEventListener("click", () => setAccessibilityPanel(els.accessibilityPanel.hidden));
   els.accessibilityClose.addEventListener("click", () => setAccessibilityPanel(false));
@@ -258,10 +272,11 @@ async function continueSavedSession() {
 }
 
 function setGameView(view) {
-  if (!['central', 'network', 'missions', 'career'].includes(view)) return;
+  if (!['central', 'network', 'fleet', 'missions', 'career'].includes(view)) return;
   activeGameView = view;
   els.centralView.hidden = view !== 'central';
   els.networkView.hidden = view !== 'network';
+  els.fleetView.hidden = view !== 'fleet';
   const showDetails = view === 'missions' || view === 'career';
   els.detailScreen.hidden = !showDetails;
   els.detailScreen.querySelectorAll('[data-game-panel]').forEach((panel) => {
@@ -276,6 +291,7 @@ function setGameView(view) {
   if (session) {
     renderTutorial();
     if (view === 'network') renderNetworkOverview();
+    if (view === 'fleet') renderFleetGarage();
     if (view === 'central') window.requestAnimationFrame(renderMap);
   }
 }
@@ -336,6 +352,7 @@ async function completeCurrentTurn() {
       completedProjectIds: session.career.completedProjectIds,
       policyState: session.career.policyState,
       campaignState: session.career.campaignState,
+      fleetState: session.career.fleetState,
       tutorialCompleted: session.career.tutorialCompleted
     };
     careerProfiles[session.cityId] = nextProfile;
@@ -413,6 +430,7 @@ function render() {
   renderLog();
   renderPolicies();
   renderCampaign();
+  renderFleetGarage();
   renderNetworkOverview();
   renderDispatchFeed();
   renderTutorial();
@@ -624,6 +642,69 @@ function renderContext() {
   });
 }
 
+function renderFleetGarage() {
+  if (!session || !els.fleetGarage) return;
+  const fleet = session.fleet;
+  const vehicles = getAllTrains(session).filter((train) => train.visible);
+  const activeServices = vehicles.filter((train) => train.status === "MAINTENANCE").length;
+  const averageCondition = Math.round(vehicles.reduce((sum, train) => sum + train.condition, 0) / Math.max(vehicles.length, 1));
+  const procurement = fleet.procurement ? fleetPartCatalog[fleet.procurement.partId] : null;
+  const parts = Object.values(fleetPartCatalog).map((part) => `<article class="part-item">
+    <div><strong>${part.title}</strong><span>${fleetSystemLabels[part.system]} · ${fleet.parts[part.id] || 0} em estoque</span></div>
+    <button class="text-button" data-fleet-command="order" data-part-id="${part.id}" ${fleet.procurement ? "disabled" : ""}>${fleet.procurement ? "Entrega em curso" : `Solicitar · ${formatCurrency(part.costCents)}`}</button>
+  </article>`).join("");
+  const trains = vehicles.map((train) => {
+    const recommendation = getMaintenanceRecommendation(train);
+    const inspection = train.inspection || {};
+    const part = inspection.finding ? fleetPartCatalog[inspection.finding.partId] : null;
+    const onPlatform = ["DWELLING", "HELD", "DEPOT_READY"].includes(train.status);
+    const hasPart = part ? (fleet.parts[part.id] || 0) > 0 : false;
+    const hasCrew = session.staff.maintenanceAvailable > 0;
+    const serviceDisabled = !inspection.finding || !onPlatform || !hasPart || !hasCrew || train.status === "MAINTENANCE";
+    const inspectionCopy = train.status === "MAINTENANCE"
+      ? `Oficina em andamento · ${train.maintenanceRemaining}s`
+      : inspection.finding
+        ? `${fleetSystemLabels[inspection.finding.component]} ${inspection.finding.health}% · ${part.title}`
+        : inspection.status === "clear"
+          ? "Inspeção aprovada · sem intervenção pendente"
+          : "Aguardando inspeção remota";
+    const serviceCopy = !inspection.finding
+      ? "Inspecionar para liberar serviço"
+      : !onPlatform
+        ? "Aguardar parada em plataforma"
+        : !hasPart
+          ? `${part.title} indisponível`
+          : !hasCrew
+            ? "Equipe ocupada em outra ordem"
+            : `Executar serviço · ${part.serviceSeconds}s`;
+    return `<article class="fleet-train-card ${recommendation?.urgency || "stable"}">
+      <header><div><span>${getTrainLineLabel(train)}</span><h3>${train.id}</h3></div><b>${train.condition}%</b></header>
+      <p class="fleet-train-state">${getStatusText(train.status)} · ${inspectionCopy}</p>
+      <div class="system-health" aria-label="Sistemas de ${train.id}">${Object.entries(train.systems).map(([system, health]) => `<div><span>${fleetSystemLabels[system]}</span><i><b style="width:${health}%"></b></i><strong>${health}%</strong></div>`).join("")}</div>
+      <div class="fleet-train-actions">
+        <button class="button secondary" data-fleet-command="inspect" data-train-id="${train.id}" ${train.status === "MAINTENANCE" ? "disabled" : ""}>${inspection.inspectedAt ? "Atualizar inspeção" : "Inspecionar sistemas"}</button>
+        <button class="button ${inspection.finding ? "primary" : "secondary"}" data-fleet-command="service" data-train-id="${train.id}" ${serviceDisabled ? "disabled" : ""}>${serviceCopy}</button>
+      </div>
+    </article>`;
+  }).join("");
+  const history = fleet.serviceHistory.length
+    ? fleet.serviceHistory.slice(0, 4).map((entry) => `<li><time>${formatTime(entry.at)}</time><span><strong>${entry.trainId}</strong> · ${fleetSystemLabels[entry.component]} restaurada com ${fleetPartCatalog[entry.partId]?.title || "peça"}</span><b>${entry.conditionAfter}%</b></li>`).join("")
+    : "<li class=\"garage-empty\">Nenhum serviço direcionado concluído nesta carreira ainda.</li>";
+  els.fleetGarage.innerHTML = `<section class="garage-summary-grid">
+      <article><span>CONDIÇÃO MÉDIA</span><strong>${averageCondition}%</strong><small>${vehicles.length} composições monitoradas</small></article>
+      <article><span>EQUIPE DISPONÍVEL</span><strong>${session.staff.maintenanceAvailable}/${fleet.roster === "extended" ? 2 : 1}</strong><small>${fleet.roster === "extended" ? "escala estendida ativa" : "escala padrão"}</small></article>
+      <article><span>ORDENS EM OFICINA</span><strong>${activeServices}</strong><small>${procurement ? `${procurement.title} chega em ${fleet.procurement.remaining}s` : "sem entrega pendente"}</small></article>
+    </section>
+    <section class="garage-command-panel panel">
+      <div><p class="eyebrow">ESCALA DE MANUTENÇÃO</p><h2>${fleet.roster === "extended" ? "Turno estendido em operação" : "Uma equipe por vez"}</h2><p>${fleet.roster === "extended" ? "A segunda equipe foi incorporada à carreira e pode atender duas intervenções simultâneas." : "Amplie a escala para manter duas intervenções de frota em paralelo nos próximos dias."}</p></div>
+      <button class="button ${fleet.roster === "extended" ? "secondary" : "primary"}" data-fleet-command="roster" ${fleet.roster === "extended" ? "disabled" : ""}>${fleet.roster === "extended" ? "Escala estendida ativa" : `Ativar escala estendida · ${formatCurrency(4_800_00)}`}</button>
+    </section>
+    <div class="garage-layout">
+      <section class="garage-fleet-section"><div class="garage-section-heading"><div><p class="eyebrow">GARAGEM OPERACIONAL</p><h2>Inspeção e intervenções</h2></div><p>Diagnostique a composição antes de consumir peças. Serviços são liberados em plataforma ou no pátio.</p></div><div class="fleet-train-grid">${trains}</div></section>
+      <aside class="garage-sidebar"><section class="garage-stock panel"><p class="eyebrow">ESTOQUE DE PEÇAS</p><h2>Almoxarifado</h2><div class="parts-list">${parts}</div>${procurement ? `<p class="procurement-status">Em trânsito: <strong>${procurement.title}</strong> · chegada em ${fleet.procurement.remaining}s de simulação.</p>` : ""}</section><section class="garage-history panel"><p class="eyebrow">HISTÓRICO PERSISTENTE</p><h2>Serviços da carreira</h2><ul>${history}</ul></section></aside>
+    </div>`;
+}
+
 function renderMission() {
   const contract = session.campaign?.contract;
   const missions = [
@@ -637,6 +718,9 @@ function renderMission() {
     [session.missions.expansion, "Entregue uma expansão urbana na estação prioritária"],
     [session.missions.supportLine, "Ative uma segunda linha para ampliar a rede"],
     [session.missions.preventiveMaintenance, "Programe manutenção preventiva da frota"],
+    [session.missions.fleetInspection, "Inspecione os sistemas de uma composição"],
+    [session.missions.targetedService, "Conclua um serviço direcionado de oficina"],
+    [session.missions.fleetRoster, "Amplie a escala de manutenção da carreira"],
     [session.missions.peakService, "Aplique uma política de reforço no pico"],
     [session.missions.stationTeam, "Mobilize uma equipe de estação"],
     [session.missions.routeAuthorization, "Conclua uma autorização de via confirmada pelo condutor"],

@@ -376,3 +376,59 @@ test("saves anteriores recebem nível e metas semanais da carreira", () => {
   assert.equal(resumed.career.weekly.week, 2);
   assert.equal(resumed.career.weekly.goals.length, 3);
 });
+
+test("a inspeção de frota aponta um sistema e libera serviço direcionado com peça", () => {
+  const session = createInitialSession("career", "vale-central");
+  const train = session.trains.find((item) => item.id === "VM-103");
+  const initialCondition = train.condition;
+  const inspected = applyCommand(session, { id: "inspect-vm103", type: "INSPECT_TRAIN", trainId: train.id });
+
+  assert.equal(inspected.accepted, true);
+  assert.equal(train.inspection.finding.component, "traction");
+  assert.equal(session.missions.fleetInspection, true);
+  assert.equal(session.fleet.parts.tractionPack, 1);
+
+  const serviced = applyCommand(session, { id: "service-vm103", type: "PERFORM_TARGETED_SERVICE", trainId: train.id });
+  assert.equal(serviced.accepted, true);
+  assert.equal(train.status, "MAINTENANCE");
+  assert.equal(session.fleet.parts.tractionPack, 0);
+
+  tickSession(session, 24);
+  assert.equal(train.status, "DWELLING");
+  assert.ok(train.condition > initialCondition);
+  assert.equal(train.inspection.status, "serviced");
+  assert.equal(session.fleet.serviceHistory[0].trainId, "VM-103");
+});
+
+test("a compra de peça chega à garagem e a escala estendida amplia a capacidade persistente", () => {
+  const session = createInitialSession("career", "vale-central");
+  const order = applyCommand(session, { id: "order-brakes", type: "ORDER_FLEET_PART", partId: "brakeKit" });
+  const roster = applyCommand(session, { id: "extended-roster", type: "ACTIVATE_EXTENDED_MAINTENANCE_ROSTER" });
+
+  assert.equal(order.accepted, true);
+  assert.equal(roster.accepted, true);
+  assert.equal(session.staff.maintenanceAvailable, 2);
+  tickSession(session, 18);
+  assert.equal(session.fleet.parts.brakeKit, 3);
+  assert.equal(session.fleet.procurement, null);
+
+  session.turn.startedAt = session.time - session.turn.minimumDuration;
+  const completed = applyCommand(session, { id: "complete-fleet-state", type: "COMPLETE_TURN" });
+  assert.equal(completed.accepted, true);
+  assert.equal(session.career.fleetState.roster, "extended");
+  assert.equal(session.career.fleetState.parts.brakeKit, 3);
+});
+
+test("saves anteriores recebem sistemas e garagem sem perder sua condição de frota", () => {
+  const legacy = createInitialSession("career", "vale-central");
+  delete legacy.fleet;
+  delete legacy.career.fleetState;
+  delete legacy.trains[0].systems;
+  delete legacy.trains[0].inspection;
+  const resumed = normalizeSession(legacy);
+
+  assert.equal(resumed.schemaVersion, 12);
+  assert.equal(resumed.fleet.parts.doorModule, 2);
+  assert.equal(resumed.trains[0].condition, 94);
+  assert.equal(resumed.trains[0].inspection.status, "not-inspected");
+});

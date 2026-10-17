@@ -8,7 +8,7 @@
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="apple-touch-icon" href="./assets/vale-metro-control-logo.png" />
     <title>Vale Metro Control</title>
-    <link rel="stylesheet" href="./styles.css?v=6" />
+    <link rel="stylesheet" href="./styles.css?v=8" />
   </head>
   <body>
     <main id="app" class="app-shell">
@@ -74,6 +74,9 @@
           </button>
           <button class="game-nav-button" data-game-view="network">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18 9 6l6 12 5-12M4 18h16M9 6h6"/><circle cx="4" cy="18" r="1.4"/><circle cx="9" cy="6" r="1.4"/><circle cx="15" cy="18" r="1.4"/><circle cx="20" cy="6" r="1.4"/></svg><span>Rede</span>
+          </button>
+          <button class="game-nav-button" data-game-view="fleet">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19h14M7 19V9h10v10M9 9V5h6v4M9 13h2m2 0h2m-6 3h2m2 0h2"/></svg><span>Frota</span>
           </button>
           <button class="game-nav-button" data-game-view="missions">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.5h9l3 3v14H6zM9 13l2 2 4-5M15 3.5v4h4"/></svg><span>Missões</span>
@@ -144,6 +147,17 @@
               <p class="dispatch-note">Ordens são registradas, respondidas pelo condutor e só ganham prioridade depois da autorização de via.</p>
             </aside>
           </div>
+        </section>
+
+        <section id="fleet-view" class="game-view fleet-view" hidden aria-labelledby="fleet-view-title">
+          <div class="screen-section-heading">
+            <div>
+              <p class="eyebrow">CENTRO DE FROTA</p>
+              <h2 id="fleet-view-title">Garagem e manutenção</h2>
+            </div>
+            <p>Transforme o diagnóstico em decisões de oficina, com recursos que continuam na sua carreira.</p>
+          </div>
+          <div id="fleet-garage" aria-live="polite"></div>
         </section>
 
         <footer id="game-detail-screen" class="bottom-dock" hidden>
@@ -250,6 +264,6 @@
 
       <p id="live-region" class="sr-only" aria-live="assertive"></p>
     </main>
-    <script type="module" src="./src/main.js?v=6"></script>
+    <script type="module" src="./src/main.js?v=8"></script>
   </body>
 </html>

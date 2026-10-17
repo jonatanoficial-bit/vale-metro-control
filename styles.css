@@ -348,6 +348,8 @@ h2 { margin-bottom: 0; font-size: 1rem; }
   .key-value { gap: 0.25rem; margin: 0.4rem 0; }
   .bottom-dock { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; margin-top: 0.4rem; }
   .bottom-dock .panel { min-height: 0; padding: 0.55rem; }
+  .garage-layout { grid-template-columns: 1fr; }
+  .garage-sidebar { grid-template-columns: 1fr 1fr; }
 }
 
 /* Interaction shell: operational information is separated into deliberate screens. */
@@ -358,7 +360,7 @@ h2 { margin-bottom: 0; font-size: 1rem; }
     linear-gradient(180deg, rgba(3, 10, 17, 0.91) 0%, rgba(4, 15, 25, 0.96) 60%, #03080e 100%),
     url("./assets/control-room-concept.png") center top / cover fixed;
 }
-.topbar, .workspace, .bottom-dock, .game-navigation, .network-view { width: min(1800px, 100%); margin-inline: auto; }
+.topbar, .workspace, .bottom-dock, .game-navigation, .network-view, .fleet-view { width: min(1800px, 100%); margin-inline: auto; }
 .brand-lockup, .vitals, .time-controls, .panel {
   border-color: rgba(135, 166, 190, 0.22);
   background: rgba(7, 18, 30, 0.9);
@@ -375,7 +377,7 @@ h2 { margin-bottom: 0; font-size: 1rem; }
 
 .game-navigation {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 0.3rem;
   margin-bottom: 0.75rem;
   padding: 0.32rem;
@@ -449,6 +451,60 @@ h2 { margin-bottom: 0; font-size: 1rem; }
 .dispatch-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.38rem; }
 .dispatch-actions .button { min-height: 2.55rem; padding: 0.36rem 0.35rem; font-size: 0.59rem; line-height: 1.16; }
 
+.fleet-view { min-height: min(63vh, 700px); }
+.garage-summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.6rem; }
+.garage-summary-grid article { padding: 0.88rem; border: 1px solid rgba(128, 167, 192, 0.2); border-radius: 0.55rem; background: rgba(7, 20, 32, 0.86); box-shadow: 0 12px 28px rgba(0, 0, 0, 0.17); }
+.garage-summary-grid span, .garage-summary-grid small { display: block; }
+.garage-summary-grid span { color: #8ca9bc; font-size: 0.6rem; font-weight: 820; letter-spacing: 0.08em; }
+.garage-summary-grid strong { display: block; margin: 0.38rem 0 0.14rem; color: #eff8fc; font-size: 1.5rem; font-variant-numeric: tabular-nums; }
+.garage-summary-grid small { color: #a6bac8; font-size: 0.67rem; line-height: 1.35; }
+.garage-command-panel { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-top: 0.7rem; padding: 0.9rem 1rem; border-color: rgba(70, 157, 204, 0.34); background: linear-gradient(100deg, rgba(11, 43, 63, 0.92), rgba(7, 22, 34, 0.93)); }
+.garage-command-panel h2 { margin: 0.16rem 0 0; color: #edf7fc; font-size: 1rem; }
+.garage-command-panel p:not(.eyebrow) { max-width: 68ch; margin: 0.3rem 0 0; color: #aabfcd; font-size: 0.7rem; line-height: 1.42; }
+.garage-command-panel .button { flex: 0 0 auto; min-height: 2.5rem; }
+.garage-layout { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(260px, 0.72fr); gap: 0.75rem; margin-top: 0.75rem; }
+.garage-fleet-section { min-width: 0; }
+.garage-section-heading { display: flex; align-items: end; justify-content: space-between; gap: 1rem; margin: 0.12rem 0 0.58rem; padding: 0 0.1rem; }
+.garage-section-heading h2 { margin: 0.18rem 0 0; color: #e8f4fa; font-size: 1.08rem; }
+.garage-section-heading > p { max-width: 42ch; margin: 0; color: #9fb5c4; font-size: 0.68rem; line-height: 1.4; text-align: right; }
+.fleet-train-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.55rem; }
+.fleet-train-card { padding: 0.8rem; border: 1px solid rgba(128, 167, 192, 0.2); border-radius: 0.56rem; background: rgba(6, 20, 32, 0.91); box-shadow: 0 12px 24px rgba(0, 0, 0, 0.17); }
+.fleet-train-card.warning { border-color: rgba(213, 164, 67, 0.58); }
+.fleet-train-card.critical { border-color: rgba(215, 87, 107, 0.7); background: rgba(48, 15, 26, 0.8); }
+.fleet-train-card header { display: flex; align-items: start; justify-content: space-between; gap: 0.6rem; }
+.fleet-train-card header span { display: block; color: #85a9c1; font-size: 0.57rem; font-weight: 790; letter-spacing: 0.07em; }
+.fleet-train-card h3 { margin: 0.16rem 0 0; color: #f2f9fc; font-size: 0.9rem; }
+.fleet-train-card header b { color: #7cc5e9; font-size: 1.2rem; font-variant-numeric: tabular-nums; }
+.fleet-train-state { min-height: 2rem; margin: 0.52rem 0 0.6rem; color: #aec1cd; font-size: 0.64rem; line-height: 1.35; }
+.system-health { display: grid; gap: 0.36rem; padding: 0.58rem 0; border-top: 1px solid rgba(128, 167, 192, 0.14); border-bottom: 1px solid rgba(128, 167, 192, 0.14); }
+.system-health > div { display: grid; grid-template-columns: 4.8rem minmax(0, 1fr) 2.2rem; align-items: center; gap: 0.4rem; }
+.system-health span, .system-health strong { color: #aec2ce; font-size: 0.59rem; }
+.system-health strong { color: #dcecf4; font-variant-numeric: tabular-nums; text-align: right; }
+.system-health i { display: block; height: 0.35rem; overflow: hidden; border-radius: 999px; background: rgba(120, 151, 172, 0.2); }
+.system-health i b { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #2484b8, #69c9ec); }
+.fleet-train-card.warning .system-health i b { background: linear-gradient(90deg, #be8427, #e4bd62); }
+.fleet-train-card.critical .system-health i b { background: linear-gradient(90deg, #a84254, #ed7c8c); }
+.fleet-train-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; margin-top: 0.65rem; }
+.fleet-train-actions .button { min-height: 2.45rem; padding: 0.35rem 0.4rem; font-size: 0.6rem; line-height: 1.2; }
+.garage-sidebar { display: grid; align-content: start; gap: 0.65rem; }
+.garage-stock, .garage-history { padding: 0.9rem; }
+.garage-stock h2, .garage-history h2 { margin: 0.18rem 0 0.7rem; color: #eaf5fa; font-size: 0.94rem; }
+.parts-list { display: grid; gap: 0.1rem; }
+.part-item { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; padding: 0.58rem 0; border-top: 1px solid rgba(128, 167, 192, 0.15); }
+.part-item:first-child { border-top: 0; padding-top: 0; }
+.part-item strong, .part-item span { display: block; }
+.part-item strong { color: #ddecf4; font-size: 0.65rem; }
+.part-item span { margin-top: 0.13rem; color: #91aabe; font-size: 0.57rem; }
+.part-item .text-button { flex: 0 0 auto; padding: 0.36rem 0.42rem; border: 1px solid rgba(67, 151, 197, 0.38); border-radius: 0.4rem; background: rgba(10, 48, 72, 0.58); color: #bde6f8; font-size: 0.56rem; }
+.part-item .text-button[disabled] { border-color: rgba(128, 167, 192, 0.15); background: transparent; color: #7890a0; }
+.procurement-status { margin: 0.7rem 0 0; padding-top: 0.62rem; border-top: 1px solid rgba(128, 167, 192, 0.15); color: #9dc9df; font-size: 0.63rem; line-height: 1.42; }
+.garage-history ul { display: grid; gap: 0.52rem; margin: 0; padding: 0; list-style: none; }
+.garage-history li { display: grid; grid-template-columns: 2.65rem minmax(0, 1fr) auto; gap: 0.35rem; align-items: start; color: #a7bdca; font-size: 0.59rem; line-height: 1.35; }
+.garage-history time { color: #7598ae; font-variant-numeric: tabular-nums; }
+.garage-history li strong { color: #dcecf4; }
+.garage-history li b { color: #75c6e9; font-size: 0.6rem; }
+.garage-history .garage-empty { display: block; color: #899eae; font-style: italic; }
+
 .bottom-dock { grid-template-columns: repeat(3, minmax(0, 1fr)); width: min(1320px, 100%); }
 .bottom-dock .panel { min-height: 13rem; padding: 1rem; }
 .mission-card, .alert-card { grid-column: span 1; }
@@ -480,6 +536,7 @@ h2 { margin-bottom: 0; font-size: 1rem; }
   .screen-section-heading { align-items: flex-start; flex-direction: column; gap: 0.25rem; margin: 0.5rem 0; }
   .screen-section-heading > p { max-width: 48ch; text-align: left; }
   .network-layout { grid-template-columns: 1fr; }
+  .game-navigation { grid-template-columns: repeat(5, minmax(0, 1fr)); }
   .network-overview, .dispatch-channel { min-height: 0; padding: 0.75rem; }
   .network-status-grid { gap: 0.35rem; }
   .network-status-grid article { padding: 0.55rem; }
@@ -491,6 +548,19 @@ h2 { margin-bottom: 0; font-size: 1rem; }
   .dispatch-feed { max-height: none; }
   .dispatch-actions { grid-template-columns: 1fr; }
   .dispatch-actions .button { min-height: 2.7rem; font-size: 0.66rem; }
+  .garage-summary-grid { gap: 0.36rem; }
+  .garage-summary-grid article { padding: 0.58rem; }
+  .garage-summary-grid span { font-size: 0.49rem; letter-spacing: 0.045em; }
+  .garage-summary-grid strong { margin-top: 0.28rem; font-size: 1.12rem; }
+  .garage-summary-grid small { font-size: 0.54rem; }
+  .garage-command-panel { align-items: stretch; flex-direction: column; gap: 0.7rem; padding: 0.75rem; }
+  .garage-command-panel .button { width: 100%; }
+  .garage-section-heading { align-items: flex-start; flex-direction: column; gap: 0.26rem; }
+  .garage-section-heading > p { text-align: left; }
+  .fleet-train-grid { grid-template-columns: 1fr; }
+  .fleet-train-card { padding: 0.72rem; }
+  .garage-sidebar { grid-template-columns: 1fr; }
+  .fleet-train-actions { grid-template-columns: 1fr; }
   .bottom-dock { grid-template-columns: 1fr; width: 100%; margin-top: 0.5rem; }
   .bottom-dock .panel { min-height: 0; padding: 0.8rem; }
   .workspace { gap: 0.5rem; }
@@ -513,6 +583,10 @@ h2 { margin-bottom: 0; font-size: 1rem; }
   .game-nav-button svg { width: 0.8rem; height: 0.8rem; }
   .network-view { min-height: 0; }
   .network-layout { grid-template-columns: minmax(0, 1.5fr) minmax(220px, 0.8fr); }
+  .garage-summary-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .garage-layout { grid-template-columns: minmax(0, 1.5fr) minmax(220px, 0.8fr); }
+  .fleet-train-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .garage-sidebar { grid-template-columns: 1fr; }
   .network-overview, .dispatch-channel { min-height: 18rem; padding: 0.55rem; }
   .tutorial-dialog { grid-template-columns: 11rem 1fr; max-height: calc(100dvh - 1rem); }
   .tutorial-dialog > img { min-height: 0; }

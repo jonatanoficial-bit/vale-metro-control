@@ -111,10 +111,10 @@ export const stationBlueprint = [
 ];
 
 const trainBlueprint = [
-  { id: "VM-101", segmentIndex: 0, progress: 0.26, status: "EN_ROUTE", occupancy: 72, delaySec: 0, condition: 94 },
-  { id: "VM-102", segmentIndex: 1, progress: 0.43, status: "EN_ROUTE", occupancy: 108, delaySec: 16, condition: 78 },
-  { id: "VM-103", segmentIndex: 2, progress: 0, status: "DWELLING", occupancy: 133, delaySec: 0, dwellRemaining: 11, condition: 88 },
-  { id: "VM-104", segmentIndex: 3, progress: 0.52, status: "EN_ROUTE", occupancy: 64, delaySec: 8, condition: 91 }
+  { id: "VM-101", segmentIndex: 0, progress: 0.26, status: "EN_ROUTE", occupancy: 72, delaySec: 0, condition: 94, systems: { traction: 94, brakes: 94, doors: 94, hvac: 94 } },
+  { id: "VM-102", segmentIndex: 1, progress: 0.43, status: "EN_ROUTE", occupancy: 108, delaySec: 16, condition: 78, systems: { traction: 72, brakes: 78, doors: 82, hvac: 80 } },
+  { id: "VM-103", segmentIndex: 2, progress: 0, status: "DWELLING", occupancy: 133, delaySec: 0, dwellRemaining: 11, condition: 88, systems: { traction: 88, brakes: 88, doors: 88, hvac: 88 } },
+  { id: "VM-104", segmentIndex: 3, progress: 0.52, status: "EN_ROUTE", occupancy: 64, delaySec: 8, condition: 91, systems: { traction: 90, brakes: 92, doors: 91, hvac: 91 } }
 ];
 
 const supportTrainBlueprint = {
@@ -136,6 +136,89 @@ const statusText = {
   HELD: "Retido",
   WAITING_SIGNAL: "Aguardando via"
 };
+
+export const fleetPartCatalog = {
+  brakeKit: { id: "brakeKit", title: "Kit de freio", system: "brakes", costCents: 1_750_00, deliverySeconds: 18, serviceSeconds: 16, recovery: 28 },
+  doorModule: { id: "doorModule", title: "Módulo de portas", system: "doors", costCents: 2_400_00, deliverySeconds: 20, serviceSeconds: 18, recovery: 32 },
+  tractionPack: { id: "tractionPack", title: "Conjunto de tração", system: "traction", costCents: 4_800_00, deliverySeconds: 28, serviceSeconds: 24, recovery: 36 },
+  hvacFilter: { id: "hvacFilter", title: "Filtro HVAC", system: "hvac", costCents: 1_150_00, deliverySeconds: 14, serviceSeconds: 12, recovery: 22 }
+};
+
+export const fleetSystemLabels = {
+  traction: "Tração",
+  brakes: "Freios",
+  doors: "Portas",
+  hvac: "Climatização"
+};
+
+const defaultFleetParts = { brakeKit: 2, doorModule: 2, tractionPack: 1, hvacFilter: 2 };
+
+function clampSystemValue(value, fallback = 88) {
+  const normalized = Number.isFinite(value) ? value : fallback;
+  return Math.max(35, Math.min(100, Math.round(normalized)));
+}
+
+function normalizeTrainSystems(systems, fallbackCondition = 88) {
+  const fallback = clampSystemValue(fallbackCondition);
+  return {
+    traction: clampSystemValue(systems?.traction, fallback),
+    brakes: clampSystemValue(systems?.brakes, fallback),
+    doors: clampSystemValue(systems?.doors, fallback),
+    hvac: clampSystemValue(systems?.hvac, fallback)
+  };
+}
+
+function calculateTrainCondition(systems) {
+  const values = Object.values(systems || {});
+  if (!values.length) return 88;
+  return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
+}
+
+function createFleetState(savedFleet = {}) {
+  const parts = {
+    ...defaultFleetParts,
+    ...(savedFleet?.parts || {})
+  };
+  Object.keys(defaultFleetParts).forEach((partId) => {
+    parts[partId] = Math.max(0, Math.floor(Number(parts[partId]) || 0));
+  });
+  return {
+    parts,
+    roster: savedFleet?.roster === "extended" ? "extended" : "standard",
+    procurement: savedFleet?.procurement && fleetPartCatalog[savedFleet.procurement.partId]
+      ? { partId: savedFleet.procurement.partId, remaining: Math.max(1, Number(savedFleet.procurement.remaining) || fleetPartCatalog[savedFleet.procurement.partId].deliverySeconds) }
+      : null,
+    serviceHistory: Array.isArray(savedFleet?.serviceHistory) ? savedFleet.serviceHistory.slice(0, 18) : [],
+    trainSystems: savedFleet?.trainSystems && typeof savedFleet.trainSystems === "object" ? savedFleet.trainSystems : {}
+  };
+}
+
+function getMaintenanceCapacity(fleet) {
+  return fleet?.roster === "extended" ? 2 : 1;
+}
+
+function createFleetSnapshot(session) {
+  return {
+    parts: { ...session.fleet.parts },
+    roster: session.fleet.roster,
+    procurement: session.fleet.procurement ? { ...session.fleet.procurement } : null,
+    serviceHistory: session.fleet.serviceHistory.slice(0, 18),
+    trainSystems: Object.fromEntries(getAllTrains(session).map((train) => [train.id, { ...train.systems }]))
+  };
+}
+
+export function getMaintenanceRecommendation(train) {
+  const systems = normalizeTrainSystems(train?.systems, train?.condition ?? 88);
+  const [component, health] = Object.entries(systems).sort((a, b) => a[1] - b[1])[0];
+  if (health >= 93) return null;
+  const part = Object.values(fleetPartCatalog).find((item) => item.system === component);
+  return {
+    component,
+    health,
+    partId: part.id,
+    urgency: health < 60 ? "critical" : health < 76 ? "warning" : "planned"
+  };
+}
 
 function createTrainDispatchState() {
   return {
@@ -238,6 +321,7 @@ function advanceWeeklyGoal(session, goalId, amount = 1) {
 export function createInitialSession(mode = "career", cityId = "vale-central", careerProfile = null) {
   const city = getCityProfile(cityId);
   const balanceCents = mode === "sandbox" ? 999_999_00 : careerProfile?.balanceCents ?? city.startingBalanceCents;
+  const fleet = createFleetState(careerProfile?.fleetState);
   const stations = createCityStations(city);
   const projects = { riversideExpansion: createRiversideExpansionProject(city.stationNames[3]) };
   const completedProjectIds = careerProfile?.completedProjectIds ?? [];
@@ -249,7 +333,7 @@ export function createInitialSession(mode = "career", cityId = "vale-central", c
     if (station) station.capacity += projects.riversideExpansion.capacityGain;
   }
   const session = {
-    schemaVersion: 11,
+    schemaVersion: 12,
     mode,
     time: 6 * 3600,
     timeScale: 1,
@@ -266,22 +350,30 @@ export function createInitialSession(mode = "career", cityId = "vale-central", c
     stations,
     trains: trainBlueprint.map((train) => ({
       ...train,
+      systems: normalizeTrainSystems(careerProfile?.fleetState?.trainSystems?.[train.id] || train.systems, train.condition),
+      condition: calculateTrainCondition(normalizeTrainSystems(careerProfile?.fleetState?.trainSystems?.[train.id] || train.systems, train.condition)),
       route: [...route],
       capacity: 180,
       delaySec: train.delaySec + (city.id === "porto-dourado" ? 4 : city.id === "serra-clara" ? 1 : 0),
       holdRequested: false,
       line: "PRINCIPAL",
       maintenanceRemaining: 0,
+      maintenanceTask: null,
+      inspection: { status: "not-inspected", inspectedAt: null, finding: null },
       dispatch: createTrainDispatchState(),
       visible: true
     })),
     supportTrain: {
       ...supportTrainBlueprint,
+      systems: normalizeTrainSystems(careerProfile?.fleetState?.trainSystems?.[supportTrainBlueprint.id], supportTrainBlueprint.condition),
+      condition: calculateTrainCondition(normalizeTrainSystems(careerProfile?.fleetState?.trainSystems?.[supportTrainBlueprint.id], supportTrainBlueprint.condition)),
       route: [...supportRoute],
       capacity: 160,
       line: "SUPORTE",
       dispatchRemaining: 0,
       maintenanceRemaining: 0,
+      maintenanceTask: null,
+      inspection: { status: "not-inspected", inspectedAt: null, finding: null },
       dispatch: createTrainDispatchState(),
       holdRequested: false,
       visible: false
@@ -296,9 +388,12 @@ export function createInitialSession(mode = "career", cityId = "vale-central", c
       capacity: 180,
       delaySec: 0,
       condition: 93,
+      systems: normalizeTrainSystems(careerProfile?.fleetState?.trainSystems?.["VM-R01"], 93),
       line: "RESERVA",
       dispatchRemaining: 0,
       maintenanceRemaining: 0,
+      maintenanceTask: null,
+      inspection: { status: "not-inspected", inspectedAt: null, finding: null },
       dispatch: createTrainDispatchState(),
       visible: false,
       holdRequested: false
@@ -306,14 +401,16 @@ export function createInitialSession(mode = "career", cityId = "vale-central", c
     missions: {
       observe: false, hold: false, reserve: false, maintenance: false, signal: false, passengers: false, expansion: false,
       supportLine: false, preventiveMaintenance: false, greenEnergy: false, socialFare: false, peakService: false,
-      stationTeam: false, contract: false, routeAuthorization: false, dispatchPriority: false
+      stationTeam: false, contract: false, routeAuthorization: false, dispatchPriority: false,
+      fleetInspection: false, targetedService: false, fleetRoster: false
     },
     tutorial: careerProfile?.tutorialCompleted
       ? { status: "acknowledged", step: 3, rewardGranted: true }
       : { status: "intro", step: 0, rewardGranted: false },
     incidents: [],
     incidentHistory: [],
-    staff: { maintenanceAvailable: 1, signalAvailable: 1, passengerGuides: 2, stationTeams: 2 },
+    staff: { maintenanceAvailable: getMaintenanceCapacity(fleet), signalAvailable: 1, passengerGuides: 2, stationTeams: 2 },
+    fleet,
     scenario: {
       doorFaultAt: 6 * 3600 + 180,
       doorFaultTriggered: false,
@@ -343,6 +440,7 @@ export function createInitialSession(mode = "career", cityId = "vale-central", c
       tutorialCompleted: careerProfile?.tutorialCompleted ?? false,
       operator: normalizeOperatorProfile(careerProfile?.operator, careerProfile?.totalXp ?? 0),
       weekly: normalizeWeeklyProgress(careerProfile?.weekly, careerProfile?.day ?? 1),
+      fleetState: createFleetState(careerProfile?.fleetState),
       balanceCents
     } : null,
     turn: {
@@ -369,7 +467,7 @@ export function createInitialSession(mode = "career", cityId = "vale-central", c
 
 export function normalizeSession(session) {
   const city = getCityProfile(session.cityId || "vale-central");
-  session.schemaVersion = 11;
+  session.schemaVersion = 12;
   session.cityId ??= city.id;
   session.city ??= city.name;
   session.lineName ??= city.lineName;
@@ -383,11 +481,13 @@ export function normalizeSession(session) {
     observe: false, hold: false, reserve: false, maintenance: false, signal: false, passengers: false, expansion: false,
     supportLine: false, preventiveMaintenance: false, greenEnergy: false, socialFare: false, peakService: false,
     stationTeam: false, contract: false, routeAuthorization: false, dispatchPriority: false,
+    fleetInspection: false, targetedService: false, fleetRoster: false,
     ...session.missions
   };
   session.incidents ??= [];
   session.incidentHistory ??= [];
-  session.staff = { maintenanceAvailable: 1, signalAvailable: 1, passengerGuides: 2, stationTeams: 2, ...session.staff };
+  session.fleet = createFleetState(session.fleet || session.career?.fleetState);
+  session.staff = { maintenanceAvailable: getMaintenanceCapacity(session.fleet), signalAvailable: 1, passengerGuides: 2, stationTeams: 2, ...session.staff };
   session.scenario = {
     doorFaultAt: 6 * 3600 + 180,
     doorFaultTriggered: false,
@@ -415,11 +515,13 @@ export function normalizeSession(session) {
       policyState: {},
       campaignState: { chapterIndex: 0, completedContracts: [] },
       tutorialCompleted: false,
+      fleetState: createFleetState(),
       balanceCents: session.balanceCents,
       ...session.career
     };
     session.career.operator = normalizeOperatorProfile(session.career.operator, session.career.totalXp);
     session.career.weekly = normalizeWeeklyProgress(session.career.weekly, session.career.day);
+    session.career.fleetState = createFleetState(session.career.fleetState || session.fleet);
   }
   session.tutorial = {
     status: session.career?.tutorialCompleted ? "acknowledged" : "intro",
@@ -446,8 +548,17 @@ export function normalizeSession(session) {
     train.faultActive ??= false;
     train.condition ??= 88;
     train.maintenanceRemaining ??= 0;
+    train.maintenanceTask ??= null;
     train.line ??= train.id === "VM-201" ? "SUPORTE" : train.id === "VM-R01" ? "RESERVA" : "PRINCIPAL";
     train.dispatch = { ...createTrainDispatchState(), ...train.dispatch };
+    train.systems = normalizeTrainSystems(train.systems || session.fleet.trainSystems?.[train.id], train.condition);
+    train.condition = calculateTrainCondition(train.systems);
+    train.inspection = {
+      status: "not-inspected",
+      inspectedAt: null,
+      finding: null,
+      ...train.inspection
+    };
   });
   if (session.dispatch.messages.length === 0) {
     pushDispatchMessage(session, {
@@ -616,6 +727,18 @@ export function applyCommand(session, command) {
       break;
     case "SCHEDULE_PREVENTIVE_MAINTENANCE":
       result = schedulePreventiveMaintenance(session, command.trainId);
+      break;
+    case "INSPECT_TRAIN":
+      result = inspectFleetTrain(session, command.trainId);
+      break;
+    case "PERFORM_TARGETED_SERVICE":
+      result = performTargetedService(session, command.trainId);
+      break;
+    case "ORDER_FLEET_PART":
+      result = orderFleetPart(session, command.partId);
+      break;
+    case "ACTIVATE_EXTENDED_MAINTENANCE_ROSTER":
+      result = activateExtendedMaintenanceRoster(session);
       break;
     case "ASSIGN_MAINTENANCE":
       result = assignMaintenance(session, command.incidentId);
@@ -827,6 +950,77 @@ function activateSupportLine(session) {
   return accept(`${session.supportLineName} está em preparação com ${train.id}.`, { projectedCost: cost });
 }
 
+function inspectFleetTrain(session, trainId) {
+  const train = getAllTrains(session).find((item) => item.id === trainId);
+  if (!train || !train.visible) return reject("Esse trem não está disponível para inspeção de frota.");
+  if (train.status === "MAINTENANCE") return reject("A inspeção remota fica indisponível enquanto o trem está na oficina.");
+  const finding = getMaintenanceRecommendation(train);
+  train.inspection = {
+    status: finding ? finding.urgency : "clear",
+    inspectedAt: session.time,
+    finding
+  };
+  if (!session.missions.fleetInspection) session.xp += 5;
+  session.missions.fleetInspection = true;
+  const text = finding
+    ? `${train.id}: inspeção confirmou atenção em ${fleetSystemLabels[finding.component].toLowerCase()} (${finding.health}%).`
+    : `${train.id}: inspeção concluída. Todos os sistemas estão dentro da faixa operacional.`;
+  pushLog(session, text, finding?.urgency === "critical" ? "warning" : "info");
+  return accept(finding
+    ? `${train.id} requer ${fleetPartCatalog[finding.partId].title.toLowerCase()} antes do próximo ciclo intenso.`
+    : `${train.id} liberado pela inspeção de condição.`, { trainId, finding });
+}
+
+function performTargetedService(session, trainId) {
+  const train = getAllTrains(session).find((item) => item.id === trainId);
+  if (!train || !train.visible) return reject("Esse trem não está disponível para serviço de oficina.");
+  if (train.status === "MAINTENANCE") return reject("Esse trem já possui uma ordem de oficina em andamento.");
+  if (!train.inspection?.finding) return reject("Faça uma inspeção antes de liberar um serviço direcionado.");
+  if (!['DWELLING', 'HELD', 'DEPOT_READY'].includes(train.status)) return reject("O serviço deve ser liberado quando o trem estiver em plataforma ou no pátio.");
+  if (session.staff.maintenanceAvailable < 1) return reject("Toda a equipe de manutenção já está comprometida.");
+  const finding = train.inspection.finding;
+  const part = fleetPartCatalog[finding.partId];
+  if (!part) return reject("A peça indicada não está cadastrada na garagem.");
+  if ((session.fleet.parts[part.id] || 0) < 1) return reject(`${part.title} indisponível. Solicite reposição à garagem.`);
+  session.fleet.parts[part.id] -= 1;
+  session.staff.maintenanceAvailable -= 1;
+  train.status = "MAINTENANCE";
+  train.maintenanceRemaining = Math.max(8, part.serviceSeconds - (getCareerSpecialization(session) === "fleet" ? 4 : 0));
+  train.maintenanceTask = { type: "targeted", partId: part.id, component: finding.component, healthBefore: finding.health, startedAt: session.time };
+  train.delaySec = Math.max(0, train.delaySec - 5);
+  session.missions.targetedService = true;
+  session.xp += 14;
+  advanceWeeklyGoal(session, "fleet-ready");
+  pushLog(session, `${train.id}: ${part.title.toLowerCase()} reservado; serviço de ${fleetSystemLabels[finding.component].toLowerCase()} iniciado.`, "info");
+  return accept(`${train.id} entrou na oficina. O serviço termina em ${train.maintenanceRemaining}s de simulação.`, { trainId, partId: part.id });
+}
+
+function orderFleetPart(session, partId) {
+  const part = fleetPartCatalog[partId];
+  if (!part) return reject("Peça de frota não reconhecida.");
+  if (session.fleet.procurement) return reject("Já existe uma entrega de peças a caminho para a garagem.");
+  if (session.balanceCents < part.costCents) return reject("Saldo insuficiente para solicitar essa peça.");
+  session.balanceCents -= part.costCents;
+  session.operatingCostCents += part.costCents;
+  session.fleet.procurement = { partId: part.id, remaining: part.deliverySeconds, orderedAt: session.time };
+  pushLog(session, `Garagem: pedido de ${part.title.toLowerCase()} aprovado. Chegada estimada em ${part.deliverySeconds}s.`, "info");
+  return accept(`${part.title} em trânsito para a garagem.`, { projectedCost: part.costCents, partId: part.id });
+}
+
+function activateExtendedMaintenanceRoster(session) {
+  const cost = 4_800_00;
+  if (session.fleet.roster === "extended") return reject("A escala estendida de manutenção já está ativa nesta carreira.");
+  if (session.balanceCents < cost) return reject("Saldo insuficiente para ampliar a escala de manutenção.");
+  session.balanceCents -= cost;
+  session.operatingCostCents += cost;
+  session.fleet.roster = "extended";
+  session.staff.maintenanceAvailable += 1;
+  session.missions.fleetRoster = true;
+  session.xp += 12;
+  pushLog(session, "Escala estendida aprovada: uma segunda equipe de manutenção passou a compor a carreira.", "info");
+  return accept("Escala estendida ativa. Duas intervenções de frota podem ocorrer em paralelo.", { projectedCost: cost });
+}
+
 function schedulePreventiveMaintenance(session, trainId) {
   const train = getAllTrains(session).find((item) => item.id === trainId);
   const cost = getPreventiveMaintenanceCost(session);
@@ -841,6 +1035,7 @@ function schedulePreventiveMaintenance(session, trainId) {
   session.operatingCostCents += cost;
   train.status = "MAINTENANCE";
   train.maintenanceRemaining = 26;
+  train.maintenanceTask = { type: "preventive", startedAt: session.time };
   train.delaySec = Math.max(0, train.delaySec - 8);
   session.missions.preventiveMaintenance = true;
   session.xp += 18;
@@ -1014,6 +1209,7 @@ function completeTurn(session) {
     farePlan: session.policies.farePlan,
     greenEnergy: session.policies.greenEnergy
   };
+  session.career.fleetState = createFleetSnapshot(session);
   const previousCampaignState = session.career.campaignState || { chapterIndex: 0, completedContracts: [] };
   session.career.campaignState = {
     chapterIndex: (previousCampaignState.chapterIndex ?? 0) + (contractResult.completed ? 1 : 0),
@@ -1086,6 +1282,7 @@ export function tickSession(session, seconds = 1) {
     getVisibleTrains(session).forEach((train) => advanceTrain(session, train));
     session.operatingCostCents += session.policies.greenEnergy ? 160 : 210;
     updateFleetCondition(session);
+    updateFleetProcurement(session);
     updatePolicies(session);
     updateTeamSupport(session);
     updateIncidents(session);
@@ -1201,11 +1398,32 @@ function advanceTrain(session, train) {
     train.maintenanceRemaining -= 1;
     if (train.maintenanceRemaining <= 0) {
       train.maintenanceRemaining = 0;
-      train.condition = getCareerSpecialization(session) === "fleet" ? 100 : 98;
+      const task = train.maintenanceTask;
+      if (task?.type === "targeted") {
+        const part = fleetPartCatalog[task.partId];
+        train.systems[task.component] = Math.min(100, Math.max(train.systems[task.component], task.healthBefore + part.recovery));
+        train.condition = calculateTrainCondition(train.systems);
+        train.inspection = { status: "serviced", inspectedAt: session.time, finding: null, servicedAt: session.time };
+        session.fleet.serviceHistory.unshift({
+          at: session.time,
+          trainId: train.id,
+          partId: task.partId,
+          component: task.component,
+          conditionAfter: train.condition
+        });
+        session.fleet.serviceHistory = session.fleet.serviceHistory.slice(0, 18);
+        pushLog(session, `${train.id}: serviço de ${fleetSystemLabels[task.component].toLowerCase()} concluído; condição agora em ${train.condition}%.`, "info");
+      } else {
+        const restoredCondition = getCareerSpecialization(session) === "fleet" ? 100 : 98;
+        train.systems = normalizeTrainSystems(null, restoredCondition);
+        train.condition = restoredCondition;
+        train.inspection = { status: "serviced", inspectedAt: session.time, finding: null, servicedAt: session.time };
+        pushLog(session, `${train.id}: manutenção preventiva concluída; condição restaurada para ${restoredCondition}%.`, "info");
+      }
       train.status = "DWELLING";
       train.dwellRemaining = 7;
+      train.maintenanceTask = null;
       session.staff.maintenanceAvailable += 1;
-      pushLog(session, `${train.id}: manutenção preventiva concluída; condição restaurada para 98%.`, "info");
     }
     return;
   }
@@ -1293,12 +1511,27 @@ function updateFleetCondition(session) {
   if (session.time % 60 !== 0) return;
   for (const train of getVisibleTrains(session)) {
     if (train.status === "MAINTENANCE" || train.status === "DEPOT_READY") continue;
-    train.condition = Math.max(40, train.condition - (train.line === "SUPORTE" ? 2 : 1));
+    const systems = Object.keys(train.systems);
+    const wornSystem = systems[(Math.floor(session.time / 60) + train.segmentIndex) % systems.length];
+    const wear = train.line === "SUPORTE" ? 2 : 1;
+    train.systems[wornSystem] = Math.max(35, train.systems[wornSystem] - wear);
+    train.condition = calculateTrainCondition(train.systems);
     if (train.condition < 65) {
       train.delaySec += 5;
       pushLog(session, `${train.id}: condição de frota baixa (${train.condition}%). Risco de atraso aumentado.`, "warning");
     }
   }
+}
+
+function updateFleetProcurement(session) {
+  const procurement = session.fleet.procurement;
+  if (!procurement) return;
+  procurement.remaining -= 1;
+  if (procurement.remaining > 0) return;
+  const part = fleetPartCatalog[procurement.partId];
+  session.fleet.parts[part.id] = (session.fleet.parts[part.id] || 0) + 1;
+  session.fleet.procurement = null;
+  pushLog(session, `Garagem: ${part.title.toLowerCase()} recebida e liberada para a oficina.`, "info");
 }
 
 function updatePolicies(session) {
@@ -1370,6 +1603,8 @@ function triggerDoorFault(session) {
   if (!train) return;
   session.scenario.doorFaultTriggered = true;
   train.faultActive = true;
+  train.systems.doors = Math.max(35, train.systems.doors - 16);
+  train.condition = calculateTrainCondition(train.systems);
   train.delaySec += 24;
   session.incidents.push({
     id: "door-fault",
@@ -1432,6 +1667,8 @@ function resolveIncident(session, incident) {
     if (train) {
       train.faultActive = false;
       train.dwellRemaining = Math.max(2, train.dwellRemaining ?? 0);
+      train.systems.doors = Math.max(train.systems.doors, 78);
+      train.condition = calculateTrainCondition(train.systems);
     }
     session.staff.maintenanceAvailable += 1;
     session.missions.maintenance = true;
