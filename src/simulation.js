@@ -153,6 +153,86 @@ export const fleetSystemLabels = {
 
 const defaultFleetParts = { brakeKit: 2, doorModule: 2, tractionPack: 1, hvacFilter: 2 };
 
+const weatherByCity = {
+  "vale-central": [
+    { id: "rain", title: "Chuva moderada", shortTitle: "Chuva", note: "Aderência reduzida nos trechos elevados.", demandMultiplier: 1.04, movementMultiplier: 0.93, maintenanceWear: 1 },
+    { id: "clear", title: "Céu aberto", shortTitle: "Estável", note: "Visibilidade plena e operação regular.", demandMultiplier: 1, movementMultiplier: 1, maintenanceWear: 0 },
+    { id: "heat", title: "Calor urbano", shortTitle: "Calor", note: "Mais embarques no corredor central.", demandMultiplier: 1.06, movementMultiplier: 0.98, maintenanceWear: 0 }
+  ],
+  "porto-dourado": [
+    { id: "coastal-wind", title: "Vento costeiro", shortTitle: "Vento", note: "Velocidade controlada nos viadutos da marina.", demandMultiplier: 1.05, movementMultiplier: 0.9, maintenanceWear: 1 },
+    { id: "sea-rain", title: "Chuva marítima", shortTitle: "Chuva", note: "Fluxo de chegada aumenta no terminal oceânico.", demandMultiplier: 1.08, movementMultiplier: 0.92, maintenanceWear: 1 },
+    { id: "clear", title: "Manhã estável", shortTitle: "Estável", note: "Operação costeira sem restrições climáticas.", demandMultiplier: 1, movementMultiplier: 1, maintenanceWear: 0 }
+  ],
+  "serra-clara": [
+    { id: "fog", title: "Neblina de serra", shortTitle: "Neblina", note: "Visibilidade reduzida nas aproximações do vale.", demandMultiplier: 1.03, movementMultiplier: 0.86, maintenanceWear: 1 },
+    { id: "cold-rain", title: "Chuva fria", shortTitle: "Chuva", note: "Embarques antecipados perto do hospital regional.", demandMultiplier: 1.05, movementMultiplier: 0.9, maintenanceWear: 1 },
+    { id: "clear", title: "Manhã clara", shortTitle: "Estável", note: "Corredor residencial em condição regular.", demandMultiplier: 1, movementMultiplier: 1, maintenanceWear: 0 }
+  ]
+};
+
+const urbanEventsByCity = {
+  "vale-central": [
+    { id: "campus-exchange", title: "Troca de turno universitária", stationId: "central", description: "Conexões estudantis elevam a pressão de embarque na Central.", demandMultiplier: 1.34 },
+    { id: "riverside-market", title: "Mercado de Riverside", stationId: "riverside", description: "Abertura do mercado concentra chegadas no bairro ribeirinho.", demandMultiplier: 1.28 },
+    { id: "porto-fair", title: "Feira do Porto Azul", stationId: "porto", description: "Visitantes chegam em ondas curtas ao terminal.", demandMultiplier: 1.25 }
+  ],
+  "porto-dourado": [
+    { id: "dock-shift", title: "Troca de escala portuária", stationId: "riverside", description: "Trabalhadores do cais chegam juntos ao Distrito do Porto.", demandMultiplier: 1.38 },
+    { id: "market-auction", title: "Leilão no Mercado Velho", stationId: "central", description: "O mercado concentra demanda antes da abertura comercial.", demandMultiplier: 1.3 },
+    { id: "ocean-arrival", title: "Chegada de cruzeiro", stationId: "porto", description: "O Terminal Oceano recebe uma onda extra de passageiros.", demandMultiplier: 1.35 }
+  ],
+  "serra-clara": [
+    { id: "hospital-shift", title: "Troca de plantão hospitalar", stationId: "riverside", description: "Profissionais e acompanhantes ampliam o fluxo no Hospital Regional.", demandMultiplier: 1.32 },
+    { id: "civic-session", title: "Sessão no Centro Cívico", stationId: "central", description: "A audiência pública aumenta as transferências pela rede.", demandMultiplier: 1.24 },
+    { id: "park-event", title: "Abertura no Parque Alto", stationId: "norte", description: "Visitantes antecipam a ida ao parque pela manhã.", demandMultiplier: 1.26 }
+  ]
+};
+
+function getDemandPhase(time) {
+  const elapsed = Math.max(0, time - 6 * 3600);
+  if (elapsed < 75) return { id: "opening", title: "Abertura", description: "Rede entrando no primeiro ciclo de embarques.", demandMultiplier: 0.94 };
+  if (elapsed < 250) return { id: "rush", title: "Pico matinal", description: "Demanda acelerada nas conexões urbanas.", demandMultiplier: 1.26 };
+  return { id: "distribution", title: "Distribuição", description: "O pico se espalha pelos bairros e terminais.", demandMultiplier: 1.1 };
+}
+
+function createLiveScenario(city, day = 1) {
+  const weatherOptions = weatherByCity[city.id] || weatherByCity["vale-central"];
+  const eventOptions = urbanEventsByCity[city.id] || urbanEventsByCity["vale-central"];
+  const index = Math.max(0, (day - 1) % Math.min(weatherOptions.length, eventOptions.length));
+  const weather = weatherOptions[index];
+  const event = eventOptions[index];
+  const startsAt = 6 * 3600 + 70;
+  return {
+    weather: { ...weather },
+    phase: getDemandPhase(6 * 3600),
+    urbanEvent: {
+      ...event,
+      startsAt,
+      endsAt: startsAt + 185,
+      chainAt: startsAt + 50,
+      active: false,
+      completed: false,
+      mitigated: false,
+      chainTriggered: false,
+      responseStatus: "ready",
+      responseRemaining: 0
+    }
+  };
+}
+
+function normalizeLiveScenario(liveScenario, city, day = 1) {
+  const fresh = createLiveScenario(city, day);
+  if (!liveScenario) return fresh;
+  return {
+    ...fresh,
+    ...liveScenario,
+    weather: { ...fresh.weather, ...liveScenario.weather },
+    phase: { ...fresh.phase, ...liveScenario.phase },
+    urbanEvent: { ...fresh.urbanEvent, ...liveScenario.urbanEvent }
+  };
+}
+
 function clampSystemValue(value, fallback = 88) {
   const normalized = Number.isFinite(value) ? value : fallback;
   return Math.max(35, Math.min(100, Math.round(normalized)));
@@ -333,7 +413,7 @@ export function createInitialSession(mode = "career", cityId = "vale-central", c
     if (station) station.capacity += projects.riversideExpansion.capacityGain;
   }
   const session = {
-    schemaVersion: 12,
+    schemaVersion: 13,
     mode,
     time: 6 * 3600,
     timeScale: 1,
@@ -402,7 +482,7 @@ export function createInitialSession(mode = "career", cityId = "vale-central", c
       observe: false, hold: false, reserve: false, maintenance: false, signal: false, passengers: false, expansion: false,
       supportLine: false, preventiveMaintenance: false, greenEnergy: false, socialFare: false, peakService: false,
       stationTeam: false, contract: false, routeAuthorization: false, dispatchPriority: false,
-      fleetInspection: false, targetedService: false, fleetRoster: false
+      fleetInspection: false, targetedService: false, fleetRoster: false, scenarioResponse: false
     },
     tutorial: careerProfile?.tutorialCompleted
       ? { status: "acknowledged", step: 3, rewardGranted: true }
@@ -417,6 +497,7 @@ export function createInitialSession(mode = "career", cityId = "vale-central", c
       signalFaultAt: 6 * 3600 + 360,
       signalFaultTriggered: false
     },
+    liveScenario: createLiveScenario(city, careerProfile?.day ?? 1),
     network: { blockedSegments: [], supportLineStatus: "available" },
     policies: {
       farePlan: policyState.farePlan ?? "balanced",
@@ -467,7 +548,7 @@ export function createInitialSession(mode = "career", cityId = "vale-central", c
 
 export function normalizeSession(session) {
   const city = getCityProfile(session.cityId || "vale-central");
-  session.schemaVersion = 12;
+  session.schemaVersion = 13;
   session.cityId ??= city.id;
   session.city ??= city.name;
   session.lineName ??= city.lineName;
@@ -481,7 +562,7 @@ export function normalizeSession(session) {
     observe: false, hold: false, reserve: false, maintenance: false, signal: false, passengers: false, expansion: false,
     supportLine: false, preventiveMaintenance: false, greenEnergy: false, socialFare: false, peakService: false,
     stationTeam: false, contract: false, routeAuthorization: false, dispatchPriority: false,
-    fleetInspection: false, targetedService: false, fleetRoster: false,
+    fleetInspection: false, targetedService: false, fleetRoster: false, scenarioResponse: false,
     ...session.missions
   };
   session.incidents ??= [];
@@ -495,6 +576,7 @@ export function normalizeSession(session) {
     signalFaultTriggered: false,
     ...session.scenario
   };
+  session.liveScenario = normalizeLiveScenario(session.liveScenario, city, session.career?.day ?? 1);
   session.network = { blockedSegments: [], supportLineStatus: "available", ...session.network };
   session.policies = { farePlan: "balanced", greenEnergy: false, peakBoostRemaining: 0, peakServiceDeployed: false, ...session.policies };
   session.passengerTransfers ??= 0;
@@ -739,6 +821,9 @@ export function applyCommand(session, command) {
       break;
     case "ACTIVATE_EXTENDED_MAINTENANCE_ROSTER":
       result = activateExtendedMaintenanceRoster(session);
+      break;
+    case "ACTIVATE_SCENARIO_RESPONSE":
+      result = activateScenarioResponse(session);
       break;
     case "ASSIGN_MAINTENANCE":
       result = assignMaintenance(session, command.incidentId);
@@ -1021,6 +1106,30 @@ function activateExtendedMaintenanceRoster(session) {
   return accept("Escala estendida ativa. Duas intervenções de frota podem ocorrer em paralelo.", { projectedCost: cost });
 }
 
+function activateScenarioResponse(session) {
+  const event = session.liveScenario?.urbanEvent;
+  const cost = 1_800_00;
+  if (!event?.active) return reject("O plano de contingência só pode ser ativado durante um evento urbano ativo.");
+  if (event.mitigated) return reject("A resposta de contingência já estabilizou este evento.");
+  if (event.responseStatus === "responding") return reject("A equipe de contingência já está em deslocamento.");
+  if (session.staff.stationTeams < 1) return reject("A equipe de estação está ocupada e não pode assumir a contingência.");
+  if (session.balanceCents < cost) return reject("Saldo insuficiente para mobilizar o plano de contingência.");
+  session.staff.stationTeams -= 1;
+  session.balanceCents -= cost;
+  session.operatingCostCents += cost;
+  event.responseStatus = "responding";
+  event.responseRemaining = 16;
+  pushLog(session, `Contingência mobilizada para ${getStation(session, event.stationId)?.name || "a estação afetada"}; resposta em 16 s.`, "warning");
+  pushDispatchMessage(session, {
+    from: "OCC-01",
+    to: "Equipe de estação",
+    priority: "priority",
+    direction: "outgoing",
+    text: `Plano de contingência acionado para ${event.title.toLowerCase()}.`
+  });
+  return accept("Plano de contingência em curso. A equipe vai estabilizar o fluxo e evitar novos impactos.", { projectedCost: cost });
+}
+
 function schedulePreventiveMaintenance(session, trainId) {
   const train = getAllTrains(session).find((item) => item.id === trainId);
   const cost = getPreventiveMaintenanceCost(session);
@@ -1278,6 +1387,7 @@ export function tickSession(session, seconds = 1) {
   for (let tick = 0; tick < seconds; tick += 1) {
     session.time += 1;
     updateDispatch(session);
+    updateLiveScenario(session);
     addPassengerDemand(session);
     getVisibleTrains(session).forEach((train) => advanceTrain(session, train));
     session.operatingCostCents += session.policies.greenEnergy ? 160 : 210;
@@ -1381,13 +1491,22 @@ function updateDispatch(session) {
 }
 
 function addPassengerDemand(session) {
+  const liveScenario = session.liveScenario;
+  const phaseMultiplier = liveScenario?.phase?.demandMultiplier ?? 1;
+  const weatherMultiplier = liveScenario?.weather?.demandMultiplier ?? 1;
+  const event = liveScenario?.urbanEvent;
+  const chainActive = getActiveIncidents(session).some((incident) => incident.id === "urban-event-chain");
   for (const station of session.stations) {
     const wave = Math.sin((session.time + station.x * 900) / 97) * 0.21;
     const multiplier = station.id === "riverside" ? 1.25 : 1;
     const farePressure = session.policies.farePlan === "social" ? 1.08 : 1;
     const campaignPressure = station.id === session.campaign?.stationId ? session.campaign.demandMultiplier : 1;
+    const eventPressure = event?.active && station.id === event.stationId
+      ? (event.mitigated ? 1.06 : event.demandMultiplier)
+      : 1;
+    const chainPressure = chainActive && station.id === event?.stationId ? 1.2 : 1;
     const teamRelief = station.id === session.teamSupport.stationId && session.teamSupport.remaining > 0 ? 0.78 : 1;
-    const added = Math.max(0, Math.floor((station.demand + wave) * multiplier * farePressure * campaignPressure * teamRelief));
+    const added = Math.max(0, Math.floor((station.demand + wave) * multiplier * farePressure * campaignPressure * phaseMultiplier * weatherMultiplier * eventPressure * chainPressure * teamRelief));
     station.queue += added;
     station.arrivals += added;
   }
@@ -1471,7 +1590,8 @@ function advanceTrain(session, train) {
   }
   if (train.status !== "EN_ROUTE") return;
   const priorityFactor = train.dispatch.priority === "recovery" && train.dispatch.priorityRemaining > 0 ? 1.18 : 1;
-  train.progress += priorityFactor / 58;
+  const weatherMovement = session.liveScenario?.weather?.movementMultiplier ?? 1;
+  train.progress += priorityFactor * weatherMovement / 58;
   if (train.progress < 1) return;
   train.progress = 0;
   if (train.dispatch.routeStatus === "authorized") {
@@ -1513,7 +1633,8 @@ function updateFleetCondition(session) {
     if (train.status === "MAINTENANCE" || train.status === "DEPOT_READY") continue;
     const systems = Object.keys(train.systems);
     const wornSystem = systems[(Math.floor(session.time / 60) + train.segmentIndex) % systems.length];
-    const wear = train.line === "SUPORTE" ? 2 : 1;
+    const weatherWear = session.liveScenario?.weather?.maintenanceWear ?? 0;
+    const wear = (train.line === "SUPORTE" ? 2 : 1) + weatherWear;
     train.systems[wornSystem] = Math.max(35, train.systems[wornSystem] - wear);
     train.condition = calculateTrainCondition(train.systems);
     if (train.condition < 65) {
@@ -1532,6 +1653,77 @@ function updateFleetProcurement(session) {
   session.fleet.parts[part.id] = (session.fleet.parts[part.id] || 0) + 1;
   session.fleet.procurement = null;
   pushLog(session, `Garagem: ${part.title.toLowerCase()} recebida e liberada para a oficina.`, "info");
+}
+
+function updateLiveScenario(session) {
+  const liveScenario = session.liveScenario;
+  if (!liveScenario) return;
+  liveScenario.phase = getDemandPhase(session.time);
+  const event = liveScenario.urbanEvent;
+  if (!event) return;
+  if (!event.active && !event.completed && session.time >= event.startsAt) {
+    event.active = true;
+    pushLog(session, `Cenário ao vivo: ${event.title} iniciou em ${getStation(session, event.stationId)?.name || "ponto prioritário"}.`, "warning");
+    pushDispatchMessage(session, {
+      from: "Central de mobilidade",
+      to: "OCC-01",
+      priority: "priority",
+      direction: "incoming",
+      text: `${event.title}: ${event.description} Plano de contingência disponível.`
+    });
+  }
+  if (event.responseStatus === "responding") {
+    event.responseRemaining -= 1;
+    if (event.responseRemaining <= 0) {
+      event.responseRemaining = 0;
+      event.responseStatus = "mitigated";
+      event.mitigated = true;
+      session.staff.stationTeams += 1;
+      session.missions.scenarioResponse = true;
+      session.xp += 16;
+      clearUrbanEventChain(session, event);
+      pushLog(session, `${event.title}: contingência concluída; fluxo estabilizado em ${getStation(session, event.stationId)?.name || "estação afetada"}.`, "info");
+    }
+  }
+  if (event.active && !event.mitigated && !event.chainTriggered && session.time >= event.chainAt) {
+    event.chainTriggered = true;
+    const station = getStation(session, event.stationId);
+    if (station) station.queue += Math.ceil(station.capacity * 0.14);
+    getVisibleTrains(session).forEach((train) => {
+      if (train.line === "PRINCIPAL") train.delaySec += 3;
+    });
+    session.incidents.push({
+      id: "urban-event-chain",
+      type: "Impacto de evento urbano",
+      severity: "warning",
+      stationId: event.stationId,
+      status: "active",
+      title: event.title,
+      startedAt: session.time
+    });
+    pushLog(session, `Escalonamento: ${event.title} saturou os acessos. Intervalos receberam atraso preventivo.`, "danger");
+    pushDispatchMessage(session, {
+      from: "OCC-01",
+      to: "REDE",
+      priority: "critical",
+      direction: "system",
+      text: `Efeito em cadeia em ${station?.name || "estação prioritária"}: fluxo de acesso saturado e intervalos sob pressão.`
+    });
+  }
+  if (event.active && session.time >= event.endsAt && (event.mitigated || !event.chainTriggered)) {
+    event.active = false;
+    event.completed = true;
+    pushLog(session, `${event.title}: janela urbana encerrada sem novos impactos na rede.`, "info");
+  }
+}
+
+function clearUrbanEventChain(session, event) {
+  const incident = getActiveIncidents(session).find((item) => item.id === "urban-event-chain");
+  if (!incident) return;
+  incident.status = "resolved";
+  incident.resolvedAt = session.time;
+  session.incidentHistory.unshift({ ...incident });
+  event.chainResolvedAt = session.time;
 }
 
 function updatePolicies(session) {

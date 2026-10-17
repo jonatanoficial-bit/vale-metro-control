@@ -18,7 +18,7 @@ import {
   fleetSystemLabels,
   specializationCatalog,
   tickSession
-} from "./simulation.js?v=8";
+} from "./simulation.js?v=9";
 
 const els = {
   landing: document.querySelector("#landing-screen"),
@@ -32,6 +32,7 @@ const els = {
   detailScreen: document.querySelector("#game-detail-screen"),
   navigation: document.querySelector(".game-navigation"),
   networkOverview: document.querySelector("#network-overview"),
+  scenarioConsole: document.querySelector("#scenario-console"),
   fleetGarage: document.querySelector("#fleet-garage"),
   dispatchFeed: document.querySelector("#dispatch-feed"),
   canvas: document.querySelector("#network-canvas"),
@@ -140,6 +141,11 @@ async function init() {
     if (command === "order") runCommand({ type: "ORDER_FLEET_PART", partId: button.dataset.partId });
     if (command === "roster") runCommand({ type: "ACTIVATE_EXTENDED_MAINTENANCE_ROSTER" });
   });
+  els.scenarioConsole.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-scenario-command]");
+    if (!button || button.disabled) return;
+    if (button.dataset.scenarioCommand === "contingency") runCommand({ type: "ACTIVATE_SCENARIO_RESPONSE" });
+  });
   els.accessibilityToggle.addEventListener("click", () => setAccessibilityPanel(els.accessibilityPanel.hidden));
   els.accessibilityClose.addEventListener("click", () => setAccessibilityPanel(false));
   els.accessibilityPanel.addEventListener("click", (event) => {
@@ -156,6 +162,7 @@ async function init() {
     if (!button || button.disabled) return;
     if (button.dataset.alertCommand === "signal") runCommand({ type: "ISOLATE_SIGNAL", incidentId: button.dataset.incident });
     if (button.dataset.alertCommand === "passengers") runCommand({ type: "DIRECT_PASSENGERS", incidentId: button.dataset.incident });
+    if (button.dataset.alertCommand === "contingency") runCommand({ type: "ACTIVATE_SCENARIO_RESPONSE" });
   });
   els.resumeSaved.addEventListener("click", continueSavedSession);
   els.backToLanding.addEventListener("click", showLanding);
@@ -290,7 +297,10 @@ function setGameView(view) {
   });
   if (session) {
     renderTutorial();
-    if (view === 'network') renderNetworkOverview();
+    if (view === 'network') {
+      renderNetworkOverview();
+      renderScenarioConsole();
+    }
     if (view === 'fleet') renderFleetGarage();
     if (view === 'central') window.requestAnimationFrame(renderMap);
   }
@@ -432,6 +442,7 @@ function render() {
   renderCampaign();
   renderFleetGarage();
   renderNetworkOverview();
+  renderScenarioConsole();
   renderDispatchFeed();
   renderTutorial();
   renderMap();
@@ -464,6 +475,40 @@ function renderNetworkOverview() {
       render();
     });
   });
+}
+
+function renderScenarioConsole() {
+  if (!session?.liveScenario || !els.scenarioConsole) return;
+  const live = session.liveScenario;
+  const event = live.urbanEvent;
+  const station = getStation(session, event.stationId);
+  const chain = getActiveIncidents(session).find((incident) => incident.id === "urban-event-chain");
+  const weatherTone = live.weather.id === "clear" ? "stable" : live.weather.id === "fog" ? "fog" : "weather";
+  const eventStatus = !event.active && !event.completed
+    ? `Previsto para ${formatTime(event.startsAt)}`
+    : event.responseStatus === "responding"
+      ? `Contingência em deslocamento · ${event.responseRemaining}s`
+      : event.mitigated
+        ? "Fluxo estabilizado pela contingência"
+        : chain
+          ? "Efeito em cadeia ativo nos acessos"
+          : event.completed
+            ? "Janela urbana concluída"
+            : "Pressão de demanda em acompanhamento";
+  const responseDisabled = !event.active || event.mitigated || event.responseStatus === "responding" || session.staff.stationTeams < 1;
+  const responseLabel = event.mitigated
+    ? "Contingência concluída"
+    : event.responseStatus === "responding"
+      ? `Equipe a caminho · ${event.responseRemaining}s`
+      : chain
+        ? `Estabilizar acessos · ${formatCurrency(1_800_00)}`
+        : `Preparar contingência · ${formatCurrency(1_800_00)}`;
+  els.scenarioConsole.innerHTML = `<div class="scenario-console-heading"><div><p class="eyebrow">CENÁRIO AO VIVO</p><h2>Contexto operacional</h2></div><span class="scenario-phase ${live.phase.id}">${live.phase.title}</span></div>
+    <div class="scenario-context-grid">
+      <article class="scenario-context-card ${weatherTone}"><span>CLIMA</span><strong>${live.weather.shortTitle}</strong><p>${live.weather.note}</p><small>Marcha ${Math.round(live.weather.movementMultiplier * 100)}% · demanda ${Math.round((live.weather.demandMultiplier - 1) * 100) >= 0 ? "+" : ""}${Math.round((live.weather.demandMultiplier - 1) * 100)}%</small></article>
+      <article class="scenario-context-card demand"><span>JANELA DE DEMANDA</span><strong>${live.phase.title}</strong><p>${live.phase.description}</p><small>Pressão de embarque ${Math.round((live.phase.demandMultiplier - 1) * 100) >= 0 ? "+" : ""}${Math.round((live.phase.demandMultiplier - 1) * 100)}%</small></article>
+    </div>
+    <article class="urban-event-card ${chain ? "chain" : event.active ? "active" : ""}"><div><span>EVENTO URBANO</span><strong>${event.title}</strong><p>${event.description}</p><small>${station?.name || "Estação prioritária"} · ${eventStatus}</small></div><button class="button ${chain ? "danger" : "primary"}" data-scenario-command="contingency" ${responseDisabled ? "disabled" : ""}>${responseLabel}</button></article>`;
 }
 
 function renderDispatchFeed() {
@@ -721,6 +766,7 @@ function renderMission() {
     [session.missions.fleetInspection, "Inspecione os sistemas de uma composição"],
     [session.missions.targetedService, "Conclua um serviço direcionado de oficina"],
     [session.missions.fleetRoster, "Amplie a escala de manutenção da carreira"],
+    [session.missions.scenarioResponse, "Estabilize um evento urbano com o plano de contingência"],
     [session.missions.peakService, "Aplique uma política de reforço no pico"],
     [session.missions.stationTeam, "Mobilize uma equipe de estação"],
     [session.missions.routeAuthorization, "Conclua uma autorização de via confirmada pelo condutor"],
@@ -752,6 +798,15 @@ function renderAlerts() {
         const response = incident.status === "responding" ? `Equipe em resposta: ${incident.responseRemaining}s restantes.` : "Selecione o trem e envie a equipe de manutenção.";
         els.alertTitle.textContent = `${incident.type} — ${incident.trainId}`;
         els.alertDescription.textContent = `A composição terá permanência adicional em plataforma. ${response}`;
+      } else if (incident.type === "Impacto de evento urbano") {
+        const event = session.liveScenario.urbanEvent;
+        const station = getStation(session, incident.stationId);
+        const responding = event.responseStatus === "responding";
+        els.alertTitle.textContent = `${event.title} — acessos saturados`;
+        els.alertDescription.textContent = responding
+          ? `Equipe de contingência em deslocamento para ${station?.name || "a estação afetada"}: ${event.responseRemaining}s restantes.`
+          : `${station?.name || "A estação afetada"} recebeu pressão adicional e os intervalos foram reduzidos. Estabilize o fluxo antes que a fila cresça.`;
+        els.alertActions.innerHTML = `<button class="button danger" data-alert-command="contingency" ${responding || event.mitigated ? "disabled" : ""}>${responding ? "Contingência em curso" : `Estabilizar acessos · ${formatCurrency(1_800_00)}`}</button>`;
       } else {
         els.alertTitle.textContent = `Fila elevada em ${critical.name}`;
         els.alertDescription.textContent = `${critical.queue} passageiros aguardam para uma capacidade de ${critical.capacity}. Considere reforçar a oferta.`;
@@ -900,6 +955,7 @@ function renderMap() {
   canvasContext.setTransform(scale, 0, 0, scale, 0, 0);
   canvasContext.clearRect(0, 0, width, height);
   drawGrid(width, height);
+  drawWeatherOverlay(width, height);
   drawTrack(width, height);
   drawNetworkNodes(width, height);
   drawStations(width, height);
@@ -926,6 +982,49 @@ function drawGrid(width, height) {
   canvasContext.lineWidth = 1;
   for (let x = 0; x < width; x += 32) { canvasContext.beginPath(); canvasContext.moveTo(x, 0); canvasContext.lineTo(x, height); canvasContext.stroke(); }
   for (let y = 0; y < height; y += 32) { canvasContext.beginPath(); canvasContext.moveTo(0, y); canvasContext.lineTo(width, y); canvasContext.stroke(); }
+}
+
+function drawWeatherOverlay(width, height) {
+  const weather = session?.liveScenario?.weather?.id;
+  if (!weather || weather === "clear" || weather === "heat") return;
+  if (weather.includes("rain")) {
+    canvasContext.save();
+    canvasContext.strokeStyle = "rgba(137, 204, 235, 0.16)";
+    canvasContext.lineWidth = 1;
+    const drift = (session.time % 42) * 1.7;
+    for (let index = 0; index < 32; index += 1) {
+      const x = (index * 61 + drift) % (width + 70) - 35;
+      const y = (index * 43 + drift * 0.36) % height;
+      canvasContext.beginPath();
+      canvasContext.moveTo(x, y);
+      canvasContext.lineTo(x - 15, y + 28);
+      canvasContext.stroke();
+    }
+    canvasContext.restore();
+    return;
+  }
+  if (weather === "fog") {
+    const fog = canvasContext.createLinearGradient(0, 0, width, height);
+    fog.addColorStop(0, "rgba(204, 222, 230, 0.1)");
+    fog.addColorStop(0.5, "rgba(202, 219, 229, 0.2)");
+    fog.addColorStop(1, "rgba(204, 222, 230, 0.06)");
+    canvasContext.fillStyle = fog;
+    canvasContext.fillRect(0, 0, width, height);
+    return;
+  }
+  if (weather === "coastal-wind") {
+    canvasContext.save();
+    canvasContext.strokeStyle = "rgba(121, 204, 236, 0.13)";
+    canvasContext.lineWidth = 1.2;
+    for (let index = 0; index < 10; index += 1) {
+      const y = 20 + index * (height / 10);
+      canvasContext.beginPath();
+      canvasContext.moveTo(width * 0.04, y);
+      canvasContext.bezierCurveTo(width * 0.32, y - 18, width * 0.62, y + 12, width * 0.93, y - 5);
+      canvasContext.stroke();
+    }
+    canvasContext.restore();
+  }
 }
 
 function mapPoint(node, width, height) {

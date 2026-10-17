@@ -17,6 +17,7 @@ Vertical slice jogável do simulador operacional de metrôs **Vale Metro Control
 - Linha complementar ativável por turno, com VM-201 em rota expressa própria e impacto na avaliação estratégica.
 - Condição individual da frota, desgaste operacional e manutenção preventiva com janela de serviço, custo e retorno de condição.
 - Centro de Frota dedicado: inspeção dos sistemas de tração, freios, portas e climatização; oficina por componente, estoque de peças, reposição com prazo, histórico persistente e escala estendida de manutenção.
+- Cenários vivos por cidade: clima com efeitos de marcha e desgaste, janela de demanda por horário, eventos urbanos localizados, escalonamento de impacto e plano de contingência jogável.
 - Conselho metropolitano com reforço de pico, energia eficiente e tarifa social; cada política altera custo, receita, demanda ou reputação e as escolhas permanentes seguem na carreira.
 - Campanha municipal por cidade, com três cenários rotativos, pressão de demanda localizada, contratos verificáveis e recompensas que avançam a carreira.
 - Equipes de estação mobilizáveis, com custo, redução imediata de fila e efeito temporário sobre a demanda local.
@@ -67,10 +68,10 @@ Os **9 de 9 lotes** previstos no escopo inicial foram concluídos. A evolução 
 2. **Parte 2 — fluxo de despacho realista:** mensagens por trem, confirmações de condutor, prioridades, autorização de via e histórico de comunicações. Entregue neste build.
 3. **Parte 3 — loop de carreira e retenção:** níveis de operador, especializações, desbloqueios, metas semanais e recompensas cosméticas/operacionais. Entregue neste build.
 4. **Parte 4 — experiência de frota e manutenção:** garagem própria, inspeção de sistemas, serviços direcionados, estoque/entrega de peças, escala de equipe e histórico persistente de condição. Entregue neste build.
-5. **Parte 5 — cenários vivos:** clima, eventos urbanos, demanda por horário e cadeias de incidentes com leitura clara de impacto.
+5. **Parte 5 — cenários vivos:** clima, eventos urbanos, demanda por horário, impacto em cadeia e plano de contingência com leitura clara na tela de Rede. Entregue neste build.
 6. **Parte 6 — apresentação premium:** tipografia, áudio, transições, feedback tátil mobile, acessibilidade e performance para aparelhos intermediários.
 7. **Parte 7 — balanceamento e lançamento:** telemetria local, dificuldade, economia, testes de regressão e preparação de distribuição.
 
-Depois desta quarta entrega, **faltam 3 partes** desse novo programa.
+Depois desta quinta entrega, **faltam 2 partes** desse novo programa.
 
 As imagens conceituais são empregadas apenas como identidade e ambientação. A operação no mapa é produzida pela simulação do jogo.

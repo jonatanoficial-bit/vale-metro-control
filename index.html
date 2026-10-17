@@ -8,7 +8,7 @@
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="apple-touch-icon" href="./assets/vale-metro-control-logo.png" />
     <title>Vale Metro Control</title>
-    <link rel="stylesheet" href="./styles.css?v=8" />
+    <link rel="stylesheet" href="./styles.css?v=9" />
   </head>
   <body>
     <main id="app" class="app-shell">
@@ -134,7 +134,10 @@
             <p>Leitura operacional por corredor, frota e canal de coordenação.</p>
           </div>
           <div class="network-layout">
-            <section id="network-overview" class="panel network-overview" aria-live="polite"></section>
+            <div class="network-main-column">
+              <section id="network-overview" class="panel network-overview" aria-live="polite"></section>
+              <section id="scenario-console" class="panel scenario-console" aria-live="polite"></section>
+            </div>
             <aside class="panel dispatch-channel">
               <p class="eyebrow">CANAL DE DESPACHO · OCC-01</p>
               <h2>Comunicações operacionais</h2>
@@ -264,6 +267,6 @@
 
       <p id="live-region" class="sr-only" aria-live="assertive"></p>
     </main>
-    <script type="module" src="./src/main.js?v=8"></script>
+    <script type="module" src="./src/main.js?v=9"></script>
   </body>
 </html>

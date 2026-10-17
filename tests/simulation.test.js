@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { applyCommand, createInitialSession, getVisibleTrains, normalizeSession, tickSession } from "../src/simulation.js";
+import { applyCommand, createInitialSession, getActiveIncidents, getVisibleTrains, normalizeSession, tickSession } from "../src/simulation.js";
 
 test("o trem reserva desconta o custo uma única vez e entra em despacho", () => {
   const session = createInitialSession();
@@ -427,8 +427,62 @@ test("saves anteriores recebem sistemas e garagem sem perder sua condição de f
   delete legacy.trains[0].inspection;
   const resumed = normalizeSession(legacy);
 
-  assert.equal(resumed.schemaVersion, 12);
+  assert.equal(resumed.schemaVersion, 13);
   assert.equal(resumed.fleet.parts.doorModule, 2);
   assert.equal(resumed.trains[0].condition, 94);
   assert.equal(resumed.trains[0].inspection.status, "not-inspected");
+});
+
+test("cada cidade inicia um clima e evento urbano coerentes com o dia de carreira", () => {
+  const vale = createInitialSession("career", "vale-central", { day: 1 });
+  const porto = createInitialSession("career", "porto-dourado", { day: 1 });
+  const serra = createInitialSession("career", "serra-clara", { day: 1 });
+
+  assert.equal(vale.liveScenario.weather.id, "rain");
+  assert.equal(porto.liveScenario.weather.id, "coastal-wind");
+  assert.equal(serra.liveScenario.weather.id, "fog");
+  assert.equal(vale.liveScenario.urbanEvent.stationId, "central");
+  assert.equal(porto.liveScenario.urbanEvent.stationId, "riverside");
+});
+
+test("evento urbano pode escalar em cadeia e a contingência resolve o impacto", () => {
+  const session = createInitialSession("career", "vale-central");
+  const event = session.liveScenario.urbanEvent;
+  tickSession(session, event.chainAt - session.time);
+  const activeEvent = session.liveScenario.urbanEvent;
+
+  const chained = getActiveIncidents(session).find((incident) => incident.id === "urban-event-chain");
+  assert.equal(activeEvent.active, true);
+  assert.equal(activeEvent.chainTriggered, true);
+  assert.ok(chained);
+
+  const response = applyCommand(session, { id: "urban-response", type: "ACTIVATE_SCENARIO_RESPONSE" });
+  assert.equal(response.accepted, true);
+  assert.equal(session.liveScenario.urbanEvent.responseStatus, "responding");
+  tickSession(session, 16);
+  assert.equal(session.liveScenario.urbanEvent.mitigated, true);
+  assert.equal(getActiveIncidents(session).some((incident) => incident.id === "urban-event-chain"), false);
+  assert.equal(session.missions.scenarioResponse, true);
+});
+
+test("contingência preventiva impede a cadeia de incidentes do evento urbano", () => {
+  const session = createInitialSession("career", "porto-dourado");
+  const event = session.liveScenario.urbanEvent;
+  tickSession(session, event.startsAt - session.time);
+  const response = applyCommand(session, { id: "urban-response-early", type: "ACTIVATE_SCENARIO_RESPONSE" });
+
+  assert.equal(response.accepted, true);
+  tickSession(session, 16 + (session.liveScenario.urbanEvent.chainAt - session.time));
+  assert.equal(session.liveScenario.urbanEvent.mitigated, true);
+  assert.equal(session.liveScenario.urbanEvent.chainTriggered, false);
+});
+
+test("saves anteriores recebem o contexto de cenário vivo ao retomar", () => {
+  const legacy = createInitialSession("career", "serra-clara");
+  delete legacy.liveScenario;
+  const resumed = normalizeSession(legacy);
+
+  assert.equal(resumed.schemaVersion, 13);
+  assert.equal(resumed.liveScenario.weather.id, "fog");
+  assert.equal(resumed.liveScenario.phase.id, "opening");
 });
