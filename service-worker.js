@@ -1,4 +1,4 @@
-const CACHE_NAME = "vale-metro-control-v10";
+const CACHE_NAME = "vale-metro-control-v11";
 const APP_SHELL = [
   "./",
   "./index.html",

@@ -4,6 +4,7 @@ import {
   createInitialSession,
   formatTime,
   getCareerRank,
+  getEconomyProfile,
   getMaintenanceRecommendation,
   getPreventiveMaintenanceCost,
   getAllTrains,
@@ -18,7 +19,7 @@ import {
   fleetSystemLabels,
   specializationCatalog,
   tickSession
-} from "./simulation.js?v=10";
+} from "./simulation.js?v=11";
 
 const els = {
   landing: document.querySelector("#landing-screen"),
@@ -133,6 +134,7 @@ async function init() {
     if (button.dataset.careerCommand === "specialization") {
       runCommand({ type: "SELECT_SPECIALIZATION", specializationId: button.dataset.specialization });
     }
+    if (button.dataset.careerCommand === "clear-telemetry") runCommand({ type: "CLEAR_LOCAL_TELEMETRY" });
   });
   els.fleetGarage.addEventListener("click", (event) => {
     const button = event.target.closest("[data-fleet-command]");
@@ -395,7 +397,11 @@ function renderTurnSummary(summary) {
     ? `<p class="contract-result success">Meta semanal concluída: ${summary.weeklyRewards.map((reward) => `${reward.title} · ${formatCurrency(reward.rewardCents)} · +${reward.rewardXp} XP`).join(" · ")}</p>`
     : "";
   const operatorText = summary.operatorLevel ? `<p class="turn-rank">Carreira: nível ${summary.operatorLevel} · ${summary.operatorTitle}</p>` : "";
-  els.turnSummaryContent.innerHTML = `<div class="turn-grade"><b>${summary.grade}</b><div><strong>${summary.score}% de desempenho operacional</strong><p>${summary.onTime}% de pontualidade · ${summary.incidentsOpen} ocorrência${summary.incidentsOpen === 1 ? "" : "s"} em aberto</p><p>Recompensa: ${formatCurrency(summary.rewardCents)} · +${summary.xpReward} XP de desempenho</p><p class="contract-result ${contract?.completed ? "success" : "pending"}">${contractText}</p>${weeklyText}${operatorText}</div></div>`;
+  const continuityText = summary.continuitySupportCents
+    ? `<p class="contract-result success">Fundo de continuidade aplicado: ${formatCurrency(summary.continuitySupportCents)} para manter a carreira operante.</p>`
+    : "";
+  const economyText = summary.economy ? `<p class="turn-economy">Economia ${summary.economy.label} · retorno operacional ${Math.round(summary.economy.rewardMultiplier * 100)}%</p>` : "";
+  els.turnSummaryContent.innerHTML = `<div class="turn-grade"><b>${summary.grade}</b><div><strong>${summary.score}% de desempenho operacional</strong><p>${summary.onTime}% de pontualidade · ${summary.incidentsOpen} ocorrência${summary.incidentsOpen === 1 ? "" : "s"} em aberto</p><p>Recompensa: ${formatCurrency(summary.rewardCents)} · +${summary.xpReward} XP de desempenho</p>${economyText}<p class="contract-result ${contract?.completed ? "success" : "pending"}">${contractText}</p>${continuityText}${weeklyText}${operatorText}</div></div>`;
   els.turnSummary.hidden = false;
 }
 
@@ -906,6 +912,8 @@ function renderCampaign() {
     return;
   }
   const rank = getCareerRank(career.totalXp);
+  const economy = getEconomyProfile(session);
+  const telemetry = career.telemetry || session.telemetry;
   const specialization = specializationCatalog.find((item) => item.id === career.operator.specialization);
   const xpUntilNext = rank.next ? Math.max(0, rank.next.minXp - career.totalXp) : 0;
   const progressPercent = Math.round(rank.progress * 100);
@@ -922,12 +930,26 @@ function renderCampaign() {
   const badges = career.operator.badges.length
     ? `<p class="career-badges"><span>DISTINTIVOS</span>${career.operator.badges.map((badge) => `<b>${badge}</b>`).join("")}</p>`
     : "";
+  const acceptedRate = telemetry.commands.total ? Math.round((telemetry.commands.accepted / telemetry.commands.total) * 100) : 100;
+  const gradeSummary = ["A", "B", "C", "D"].map((grade) => `${grade} ${telemetry.grades[grade] || 0}`).join(" · ");
+  const localReview = `<section class="local-ops-report">
+      <div><span>REVISÃO LOCAL DE OPERAÇÃO</span><strong>${economy.label}</strong><p>Dados de jogo salvos somente neste dispositivo. Nenhuma ação é enviada para servidores externos.</p></div>
+      <dl class="local-ops-metrics">
+        <div><dt>Ordens aceitas</dt><dd>${acceptedRate}%</dd></div>
+        <div><dt>Melhor turno</dt><dd>${telemetry.bestScore || "—"}${telemetry.bestScore ? "%" : ""}</dd></div>
+        <div><dt>Histórico</dt><dd>${gradeSummary}</dd></div>
+        <div><dt>Contratos</dt><dd>${telemetry.contractsCompleted || 0}</dd></div>
+      </dl>
+      <p class="economy-guidance">Retorno de turno: ${Math.round(economy.rewardMultiplier * 100)}% · ${career.continuitySupportUsed ? "fundo de continuidade já utilizado" : `proteção disponível abaixo de ${formatCurrency(economy.continuityFloorCents)}`}</p>
+      <button class="text-button local-data-action" data-career-command="clear-telemetry">Apagar relatório local</button>
+    </section>`;
   els.campaignContent.innerHTML = `<section class="career-progress-card">
       <div class="career-rank"><span>NÍVEL ${rank.level}</span><strong>${rank.title}</strong><small>${career.totalXp} XP total${rank.next ? ` · ${xpUntilNext} XP para ${rank.next.title}` : " · nível máximo"}</small></div>
       <div class="rank-progress" role="progressbar" aria-label="Progresso do nível" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progressPercent}"><i style="width:${progressPercent}%"></i></div>
       ${badges}
     </section>
     ${specializationSection}
+    ${localReview}
     <section class="weekly-card"><div><span>METAS DA SEMANA ${career.weekly.week}</span><strong>Rotina de operador</strong></div><ul>${weeklyGoals}</ul></section>
     <article class="campaign-item">
     <strong>${campaign.title}</strong>

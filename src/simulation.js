@@ -39,6 +39,7 @@ export const cityProfiles = [
     corridor: "Vale Norte — Porto Azul",
     description: "Rede equilibrada, indicada para construir a primeira carreira.",
     difficulty: "Operação moderada",
+    economy: { label: "Equilíbrio progressivo", rewardMultiplier: 1, continuityFloorCents: 42_000_00, maxContinuityGrantCents: 8_000_00 },
     startingBalanceCents: 128_400_00,
     demandMultiplier: 1,
     capacityMultiplier: 1,
@@ -62,6 +63,7 @@ export const cityProfiles = [
     corridor: "Estaleiro — Terminal Oceano",
     description: "Cidade portuária de alto fluxo: mais receita, pressão maior nos picos.",
     difficulty: "Demanda intensa",
+    economy: { label: "Risco com retorno", rewardMultiplier: 1.08, continuityFloorCents: 52_000_00, maxContinuityGrantCents: 10_000_00 },
     startingBalanceCents: 154_000_00,
     demandMultiplier: 1.18,
     capacityMultiplier: 0.94,
@@ -85,6 +87,7 @@ export const cityProfiles = [
     corridor: "Parque Alto — Vale do Sol",
     description: "Corredor residencial com orçamento menor e necessidade de regularidade.",
     difficulty: "Orçamento restrito",
+    economy: { label: "Apoio de continuidade", rewardMultiplier: 1.12, continuityFloorCents: 36_000_00, maxContinuityGrantCents: 9_000_00 },
     startingBalanceCents: 102_000_00,
     demandMultiplier: 0.86,
     capacityMultiplier: 1.08,
@@ -356,6 +359,64 @@ function normalizeWeeklyProgress(weekly, day = 1) {
   };
 }
 
+function createCareerTelemetry(telemetry = {}) {
+  return {
+    version: 1,
+    localOnly: true,
+    commands: { total: 0, accepted: 0, rejected: 0, byType: {} },
+    turns: 0,
+    grades: { A: 0, B: 0, C: 0, D: 0 },
+    bestScore: 0,
+    contractsCompleted: 0,
+    incidentsResolved: 0,
+    continuityGrantsCents: 0,
+    lastTurn: null,
+    ...telemetry,
+    version: 1,
+    localOnly: true,
+    commands: {
+      total: 0,
+      accepted: 0,
+      rejected: 0,
+      byType: {},
+      ...telemetry?.commands,
+      byType: { ...(telemetry?.commands?.byType || {}) }
+    },
+    grades: { A: 0, B: 0, C: 0, D: 0, ...(telemetry?.grades || {}) }
+  };
+}
+
+function recordCommandTelemetry(session, command, result) {
+  if (command.type === "CLEAR_LOCAL_TELEMETRY") return;
+  const telemetry = session.telemetry = createCareerTelemetry(session.telemetry);
+  telemetry.commands.total += 1;
+  if (result.accepted) {
+    telemetry.commands.accepted += 1;
+    telemetry.commands.byType[command.type] = (telemetry.commands.byType[command.type] || 0) + 1;
+  } else {
+    telemetry.commands.rejected += 1;
+  }
+  if (session.career) session.career.telemetry = telemetry;
+}
+
+function recordTurnTelemetry(session, summary, continuitySupportCents = 0) {
+  const telemetry = session.telemetry = createCareerTelemetry(session.telemetry);
+  telemetry.turns += 1;
+  telemetry.grades[summary.grade] = (telemetry.grades[summary.grade] || 0) + 1;
+  telemetry.bestScore = Math.max(telemetry.bestScore, summary.score);
+  if (summary.contract?.completed) telemetry.contractsCompleted += 1;
+  telemetry.incidentsResolved += session.incidentHistory.filter((incident) => incident.resolvedAt >= session.turn.startedAt).length;
+  telemetry.continuityGrantsCents += continuitySupportCents;
+  telemetry.lastTurn = {
+    grade: summary.grade,
+    score: summary.score,
+    onTime: summary.onTime,
+    rewardCents: summary.rewardCents,
+    continuitySupportCents
+  };
+  if (session.career) session.career.telemetry = telemetry;
+}
+
 function normalizeOperatorProfile(operator, totalXp = 0) {
   const rank = getCareerRank(totalXp);
   return {
@@ -401,6 +462,7 @@ function advanceWeeklyGoal(session, goalId, amount = 1) {
 export function createInitialSession(mode = "career", cityId = "vale-central", careerProfile = null) {
   const city = getCityProfile(cityId);
   const balanceCents = mode === "sandbox" ? 999_999_00 : careerProfile?.balanceCents ?? city.startingBalanceCents;
+  const telemetry = createCareerTelemetry(careerProfile?.telemetry);
   const fleet = createFleetState(careerProfile?.fleetState);
   const stations = createCityStations(city);
   const projects = { riversideExpansion: createRiversideExpansionProject(city.stationNames[3]) };
@@ -413,7 +475,7 @@ export function createInitialSession(mode = "career", cityId = "vale-central", c
     if (station) station.capacity += projects.riversideExpansion.capacityGain;
   }
   const session = {
-    schemaVersion: 13,
+    schemaVersion: 14,
     mode,
     time: 6 * 3600,
     timeScale: 1,
@@ -510,6 +572,7 @@ export function createInitialSession(mode = "career", cityId = "vale-central", c
     dispatch: createDispatchBoard(),
     campaign,
     projects,
+    telemetry,
     career: mode === "career" ? {
       cityId: city.id,
       day: careerProfile?.day ?? 1,
@@ -522,7 +585,9 @@ export function createInitialSession(mode = "career", cityId = "vale-central", c
       operator: normalizeOperatorProfile(careerProfile?.operator, careerProfile?.totalXp ?? 0),
       weekly: normalizeWeeklyProgress(careerProfile?.weekly, careerProfile?.day ?? 1),
       fleetState: createFleetState(careerProfile?.fleetState),
-      balanceCents
+      balanceCents,
+      continuitySupportUsed: careerProfile?.continuitySupportUsed ?? false,
+      telemetry
     } : null,
     turn: {
       status: "active",
@@ -548,7 +613,7 @@ export function createInitialSession(mode = "career", cityId = "vale-central", c
 
 export function normalizeSession(session) {
   const city = getCityProfile(session.cityId || "vale-central");
-  session.schemaVersion = 13;
+  session.schemaVersion = 14;
   session.cityId ??= city.id;
   session.city ??= city.name;
   session.lineName ??= city.lineName;
@@ -599,11 +664,17 @@ export function normalizeSession(session) {
       tutorialCompleted: false,
       fleetState: createFleetState(),
       balanceCents: session.balanceCents,
+      continuitySupportUsed: false,
+      telemetry: createCareerTelemetry(),
       ...session.career
     };
     session.career.operator = normalizeOperatorProfile(session.career.operator, session.career.totalXp);
     session.career.weekly = normalizeWeeklyProgress(session.career.weekly, session.career.day);
     session.career.fleetState = createFleetState(session.career.fleetState || session.fleet);
+    session.telemetry = createCareerTelemetry(session.career.telemetry || session.telemetry);
+    session.career.telemetry = session.telemetry;
+  } else {
+    session.telemetry = createCareerTelemetry(session.telemetry);
   }
   session.tutorial = {
     status: session.career?.tutorialCompleted ? "acknowledged" : "intro",
@@ -668,6 +739,18 @@ export function normalizeSession(session) {
 
 function getCityProfile(cityId) {
   return cityProfiles.find((city) => city.id === cityId) || cityProfiles[0];
+}
+
+export function getEconomyProfile(sessionOrCityId = "vale-central") {
+  const cityId = typeof sessionOrCityId === "string" ? sessionOrCityId : sessionOrCityId?.cityId;
+  const city = getCityProfile(cityId);
+  return {
+    label: "Equilíbrio progressivo",
+    rewardMultiplier: 1,
+    continuityFloorCents: 0,
+    maxContinuityGrantCents: 0,
+    ...city.economy
+  };
 }
 
 function createCityStations(city) {
@@ -849,6 +932,11 @@ export function applyCommand(session, command) {
     case "ACTIVATE_PEAK_SERVICE":
       result = activatePeakService(session);
       break;
+    case "CLEAR_LOCAL_TELEMETRY":
+      session.telemetry = createCareerTelemetry();
+      if (session.career) session.career.telemetry = session.telemetry;
+      result = accept("Relatório local de operação apagado deste dispositivo.");
+      break;
     case "COMPLETE_TURN":
       result = completeTurn(session);
       break;
@@ -863,6 +951,7 @@ export function applyCommand(session, command) {
   }
   if (result.accepted && command.id) session.commandIds.push(command.id);
   if (result.accepted) advanceTutorial(session, command);
+  recordCommandTelemetry(session, command, result);
   recalculate(session);
   return result;
 }
@@ -1295,7 +1384,9 @@ function completeTurn(session) {
     + (contractResult.completed ? 2 : 0);
   const score = Math.max(0, Math.min(100, session.metrics.onTime + (criticalOpen ? -15 : 4) + (activeIncidents.length === 0 ? 6 : 0) + strategicBonus));
   const grade = score >= 94 ? "A" : score >= 84 ? "B" : score >= 74 ? "C" : "D";
-  const rewardCents = { A: 16_000_00, B: 10_000_00, C: 5_000_00, D: 0 }[grade];
+  const economy = getEconomyProfile(session);
+  const baseRewardCents = { A: 16_000_00, B: 10_000_00, C: 5_000_00, D: 0 }[grade];
+  const rewardCents = Math.round(baseRewardCents * economy.rewardMultiplier);
   const xpReward = { A: 35, B: 24, C: 12, D: 4 }[grade];
   session.balanceCents += rewardCents;
   session.revenueCents += rewardCents;
@@ -1328,6 +1419,7 @@ function completeTurn(session) {
     lastContractId: session.campaign.scenarioId,
     lastContractStatus: contractResult.completed ? "completed" : "pending"
   };
+  const continuitySupportCents = provideContinuitySupport(session, economy);
   session.turn.status = "complete";
   session.turn.summary = {
     grade,
@@ -1339,11 +1431,25 @@ function completeTurn(session) {
     operatorTitle: rank?.title,
     onTime: session.metrics.onTime,
     incidentsOpen: activeIncidents.length,
-    contract: contractResult
+    contract: contractResult,
+    economy: { label: economy.label, rewardMultiplier: economy.rewardMultiplier },
+    continuitySupportCents
   };
+  recordTurnTelemetry(session, session.turn.summary, continuitySupportCents);
   session.timeScale = 0;
-  pushLog(session, `Turno encerrado com nota ${grade}. Receita de desempenho registrada.${contractResult.completed ? " Contrato municipal concluído." : " Contrato municipal permanece pendente."}`, "info");
+  pushLog(session, `Turno encerrado com nota ${grade}. Receita de desempenho registrada.${continuitySupportCents ? " Fundo de continuidade aplicado." : ""}${contractResult.completed ? " Contrato municipal concluído." : " Contrato municipal permanece pendente."}`, "info");
   return accept(`Turno concluído com nota ${grade}. O próximo dia da carreira está disponível.`, { summary: session.turn.summary });
+}
+
+function provideContinuitySupport(session, economy) {
+  if (!session.career || session.career.continuitySupportUsed || session.balanceCents >= economy.continuityFloorCents) return 0;
+  const support = Math.min(economy.maxContinuityGrantCents, economy.continuityFloorCents - session.balanceCents);
+  if (support <= 0) return 0;
+  session.balanceCents += support;
+  session.revenueCents += support;
+  session.career.balanceCents = session.balanceCents;
+  session.career.continuitySupportUsed = true;
+  return support;
 }
 
 function resolveCampaignContract(session) {

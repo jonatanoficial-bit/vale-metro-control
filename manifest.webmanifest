@@ -5,6 +5,8 @@
   "lang": "pt-BR",
   "start_url": "./",
   "display": "standalone",
+  "orientation": "any",
+  "categories": ["games", "simulation", "productivity"],
   "background_color": "#061526",
   "theme_color": "#061526",
   "icons": [
@@ -12,7 +14,7 @@
       "src": "./assets/vale-metro-control-logo.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any"
+      "purpose": "any maskable"
     }
   ]
 }

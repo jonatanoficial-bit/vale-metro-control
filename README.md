@@ -23,6 +23,7 @@ Vertical slice jogável do simulador operacional de metrôs **Vale Metro Control
 - Equipes de estação mobilizáveis, com custo, redução imediata de fila e efeito temporário sobre a demanda local.
 - Preferências de acessibilidade persistentes: alto contraste, redução de movimento, texto ampliado, sinais sonoros e resposta tátil opcionais.
 - Camada premium de interação: transições entre áreas, retorno visual de comandos, notificações operacionais e renderização limitada à área aberta para preservar bateria em celular.
+- Balanceamento por cidade: retorno proporcional ao risco, fundo único de continuidade para evitar bloqueio de carreira e relatório de operação local, privado e apagável.
 - Manifesto PWA e cache de aplicativo para instalação e uso offline após a primeira abertura.
 - Interface mobile sem bloqueio por orientação: carreira, sandbox, mapa e comandos funcionam em retrato e paisagem.
 - Mapa esquemático metropolitano original, com malha colorida, ramais, intercâmbios, estações de contexto e trens orientados pelo traçado da linha ativa.
@@ -71,8 +72,8 @@ Os **9 de 9 lotes** previstos no escopo inicial foram concluídos. A evolução 
 4. **Parte 4 — experiência de frota e manutenção:** garagem própria, inspeção de sistemas, serviços direcionados, estoque/entrega de peças, escala de equipe e histórico persistente de condição. Entregue neste build.
 5. **Parte 5 — cenários vivos:** clima, eventos urbanos, demanda por horário, impacto em cadeia e plano de contingência com leitura clara na tela de Rede. Entregue neste build.
 6. **Parte 6 — apresentação premium:** acabamento visual de central, transições entre áreas, sinais sonoros, feedback tátil opcional, notificações operacionais, acessibilidade e renderização otimizada para aparelhos intermediários. Entregue neste build.
-7. **Parte 7 — balanceamento e lançamento:** telemetria local, dificuldade, economia, testes de regressão e preparação de distribuição.
+7. **Parte 7 — balanceamento e lançamento:** retorno econômico por dificuldade, fundo de continuidade único, telemetria local e apagável, regressão automatizada, manifesto PWA pronto para distribuição e checklist de lançamento. Entregue neste build.
 
-Depois desta sexta entrega, **falta 1 parte** desse novo programa.
+As **7 partes** do programa de evolução de experiência foram concluídas.
 
 As imagens conceituais são empregadas apenas como identidade e ambientação. A operação no mapa é produzida pela simulação do jogo.

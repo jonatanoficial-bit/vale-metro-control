@@ -427,7 +427,7 @@ test("saves anteriores recebem sistemas e garagem sem perder sua condição de f
   delete legacy.trains[0].inspection;
   const resumed = normalizeSession(legacy);
 
-  assert.equal(resumed.schemaVersion, 13);
+  assert.equal(resumed.schemaVersion, 14);
   assert.equal(resumed.fleet.parts.doorModule, 2);
   assert.equal(resumed.trains[0].condition, 94);
   assert.equal(resumed.trains[0].inspection.status, "not-inspected");
@@ -482,7 +482,48 @@ test("saves anteriores recebem o contexto de cenário vivo ao retomar", () => {
   delete legacy.liveScenario;
   const resumed = normalizeSession(legacy);
 
-  assert.equal(resumed.schemaVersion, 13);
+  assert.equal(resumed.schemaVersion, 14);
   assert.equal(resumed.liveScenario.weather.id, "fog");
   assert.equal(resumed.liveScenario.phase.id, "opening");
+});
+
+test("a telemetria local registra comandos e pode ser apagada sem afetar a carreira", () => {
+  const session = createInitialSession("career", "vale-central");
+  applyCommand(session, { id: "telemetry-observe", type: "OBSERVE_NETWORK" });
+  applyCommand(session, { id: "telemetry-invalid", type: "RELEASE_TRAIN", trainId: "inexistente" });
+
+  assert.equal(session.telemetry.localOnly, true);
+  assert.equal(session.telemetry.commands.total, 2);
+  assert.equal(session.telemetry.commands.accepted, 1);
+  assert.equal(session.telemetry.commands.rejected, 1);
+
+  const clear = applyCommand(session, { id: "telemetry-clear", type: "CLEAR_LOCAL_TELEMETRY" });
+  assert.equal(clear.accepted, true);
+  assert.equal(session.telemetry.commands.total, 0);
+  assert.equal(session.career.totalXp, 0);
+});
+
+test("a economia por cidade recompensa o risco e aplica continuidade uma única vez", () => {
+  const session = createInitialSession("career", "serra-clara", { balanceCents: 1_000_00 });
+  tickSession(session, 300);
+  const result = applyCommand(session, { id: "continuity-first", type: "COMPLETE_TURN" });
+
+  assert.equal(result.accepted, true);
+  assert.equal(result.summary.economy.rewardMultiplier, 1.12);
+  assert.ok(result.summary.continuitySupportCents > 0);
+  assert.equal(session.career.continuitySupportUsed, true);
+  assert.equal(session.telemetry.turns, 1);
+  assert.equal(session.telemetry.grades[result.summary.grade], 1);
+});
+
+test("saves anteriores recebem telemetria local e proteção de continuidade", () => {
+  const legacy = createInitialSession("career", "porto-dourado");
+  delete legacy.telemetry;
+  delete legacy.career.telemetry;
+  delete legacy.career.continuitySupportUsed;
+  const resumed = normalizeSession(legacy);
+
+  assert.equal(resumed.schemaVersion, 14);
+  assert.equal(resumed.telemetry.localOnly, true);
+  assert.equal(resumed.career.continuitySupportUsed, false);
 });

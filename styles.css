@@ -734,3 +734,29 @@ button, [role="button"] { touch-action: manipulation; -webkit-tap-highlight-colo
 
 :root.reduced-motion .operational-toast.toast-enter, :root.reduced-motion .game-view.view-enter, :root.reduced-motion .bottom-dock.view-enter { animation: none; }
 :root.high-contrast .panel::before, :root.high-contrast .game-screen::before { display: none; }
+
+/* Career review and release readiness: all measurements remain on-device. */
+.local-ops-report {
+  display: grid;
+  gap: 0.65rem;
+  padding: 0.72rem;
+  border: 1px solid rgba(91, 180, 220, 0.28);
+  border-radius: 0.56rem;
+  background: linear-gradient(135deg, rgba(9, 43, 61, 0.7), rgba(6, 23, 36, 0.74));
+}
+.local-ops-report > div > span, .local-ops-report > div > strong { display: block; }
+.local-ops-report > div > span { color: #85bdd9; font-size: 0.52rem; font-weight: 850; letter-spacing: 0.085em; }
+.local-ops-report > div > strong { margin-top: 0.2rem; color: #edf8fc; font-size: 0.78rem; }
+.local-ops-report > div > p { margin: 0.22rem 0 0; color: #a9c1cf; font-size: 0.6rem; line-height: 1.42; }
+.local-ops-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.4rem; margin: 0; }
+.local-ops-metrics div { min-width: 0; padding: 0.48rem; border: 1px solid rgba(131, 182, 207, 0.16); border-radius: 0.42rem; background: rgba(3, 17, 28, 0.46); }
+.local-ops-metrics dt { overflow: hidden; color: #89a8ba; font-size: 0.52rem; font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
+.local-ops-metrics dd { margin: 0.22rem 0 0; overflow: hidden; color: #e5f3f9; font-size: 0.68rem; font-variant-numeric: tabular-nums; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+.economy-guidance { margin: 0; color: #84cde9; font-size: 0.58rem; line-height: 1.38; }
+.local-data-action { justify-self: start; padding: 0.2rem 0; color: #9dc1d5; font-size: 0.58rem; }
+.turn-economy { color: #90cee7 !important; font-size: 0.69rem !important; font-weight: 700; }
+
+@media (max-width: 760px) {
+  .local-ops-report { padding: 0.65rem; }
+  .local-ops-metrics { gap: 0.32rem; }
+}
