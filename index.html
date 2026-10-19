@@ -8,7 +8,9 @@
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="apple-touch-icon" href="./assets/vale-metro-control-logo.png" />
     <title>Vale Metro Control</title>
-    <link rel="stylesheet" href="./styles.css?v=9" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <link rel="stylesheet" href="./styles.css?v=10" />
   </head>
   <body>
     <main id="app" class="app-shell">
@@ -250,6 +252,7 @@
           <button class="accessibility-option" data-accessibility-setting="reducedMotion" aria-pressed="false">Reduzir movimento</button>
           <button class="accessibility-option" data-accessibility-setting="largeText" aria-pressed="false">Texto ampliado</button>
           <button class="accessibility-option" data-accessibility-setting="audio" aria-pressed="false">Sinais sonoros</button>
+          <button class="accessibility-option" data-accessibility-setting="haptics" aria-pressed="false">Resposta tátil</button>
         </div>
       </section>
 
@@ -266,7 +269,8 @@
       </section>
 
       <p id="live-region" class="sr-only" aria-live="assertive"></p>
+      <div id="operational-toast" class="operational-toast" aria-live="polite" aria-atomic="true" hidden></div>
     </main>
-    <script type="module" src="./src/main.js?v=9"></script>
+    <script type="module" src="./src/main.js?v=10"></script>
   </body>
 </html>

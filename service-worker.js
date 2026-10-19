@@ -1,4 +1,4 @@
-const CACHE_NAME = "vale-metro-control-v9";
+const CACHE_NAME = "vale-metro-control-v10";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -22,12 +22,13 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
   const isNavigation = event.request.mode === "navigate" || new URL(event.request.url).pathname.endsWith(".html");
+  const fromCache = () => caches.match(event.request, { ignoreSearch: true });
   const fromNetwork = fetch(event.request).then((response) => {
     const copy = response.clone();
     caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
     return response;
   });
   event.respondWith(isNavigation
-    ? fromNetwork.catch(() => caches.match(event.request).then((cached) => cached || caches.match("./index.html")))
-    : caches.match(event.request).then((cached) => cached || fromNetwork.catch(() => caches.match("./index.html"))));
+    ? fromNetwork.catch(() => fromCache().then((cached) => cached || caches.match("./index.html")))
+    : fromCache().then((cached) => cached || fromNetwork.catch(() => caches.match("./index.html"))));
 });

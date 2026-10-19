@@ -628,3 +628,109 @@ h2 { margin-bottom: 0; font-size: 1rem; }
 }
 
 .reduced-motion .tutorial-target { animation: none; }
+
+/* Premium interaction layer: restrained motion and clear operational feedback. */
+html { background: #02070d; text-rendering: optimizeLegibility; }
+body { font-family: Inter, "Aptos", "Segoe UI Variable", ui-sans-serif, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+button, [role="button"] { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+.app-shell { position: relative; isolation: isolate; }
+.app-shell::before {
+  position: fixed;
+  z-index: -1;
+  inset: 0;
+  content: "";
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 76% 12%, rgba(28, 118, 167, 0.16), transparent 28rem),
+    radial-gradient(circle at 13% 84%, rgba(22, 77, 113, 0.12), transparent 24rem);
+}
+.game-screen { position: relative; isolation: isolate; padding-bottom: max(0.8rem, env(safe-area-inset-bottom)); }
+.game-screen::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  content: "";
+  pointer-events: none;
+  opacity: 0.25;
+  background-image: linear-gradient(rgba(123, 192, 225, 0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(123, 192, 225, 0.028) 1px, transparent 1px);
+  background-size: 3.5rem 3.5rem;
+  mask-image: linear-gradient(to bottom, black, transparent 60%);
+}
+.topbar, .game-navigation, .workspace, .network-view, .fleet-view, .bottom-dock { position: relative; z-index: 1; }
+.panel, .brand-lockup, .vitals, .time-controls {
+  background: linear-gradient(145deg, rgba(11, 27, 43, 0.96), rgba(5, 15, 25, 0.94));
+  box-shadow: 0 1.05rem 2.8rem rgba(0, 0, 0, 0.24), inset 0 1px 0 rgba(211, 239, 255, 0.035);
+}
+.panel { position: relative; }
+.panel::before {
+  position: absolute;
+  inset: 0.38rem;
+  border-top: 1px solid rgba(178, 222, 244, 0.035);
+  border-radius: inherit;
+  content: "";
+  pointer-events: none;
+}
+.brand-lockup, .vitals, .time-controls, .game-navigation { box-shadow: 0 0.75rem 2.3rem rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(211, 239, 255, 0.04); }
+.vitals div { position: relative; }
+.vitals div::after { position: absolute; right: 0; top: 22%; bottom: 22%; width: 1px; background: linear-gradient(transparent, rgba(122, 175, 204, 0.28), transparent); content: ""; }
+.vitals div:last-child::after { display: none; }
+.button, .icon-button, .time-button, .text-button, .game-nav-button {
+  transition: transform 170ms cubic-bezier(.2,.8,.2,1), border-color 170ms ease, background 170ms ease, box-shadow 170ms ease, color 170ms ease;
+}
+.button:active, .icon-button:active, .time-button:active, .game-nav-button:active { transform: translateY(1px) scale(0.985); }
+.button.primary {
+  border-color: rgba(103, 209, 255, 0.78);
+  background: linear-gradient(135deg, #0c5688, #147eb3);
+  box-shadow: inset 0 1px 0 rgba(222, 248, 255, 0.2), 0 0.5rem 1.4rem rgba(14, 124, 183, 0.2);
+}
+.button.primary:hover { background: linear-gradient(135deg, #116caa, #1b90c8); box-shadow: inset 0 1px 0 rgba(222, 248, 255, 0.25), 0 0.65rem 1.8rem rgba(14, 124, 183, 0.28); }
+.button.secondary { background: linear-gradient(135deg, rgba(20, 47, 67, 0.98), rgba(9, 25, 39, 0.98)); }
+.game-nav-button.active { box-shadow: inset 0 1px 0 rgba(218, 244, 255, 0.13), 0 0.4rem 1.1rem rgba(24, 112, 165, 0.12); }
+.game-nav-button.active::after { width: 1.55rem; height: 2px; border-radius: 999px; background: #77cef4; box-shadow: 0 0 0.6rem rgba(119, 206, 244, 0.65); content: ""; }
+.game-nav-button.active { flex-wrap: wrap; }
+.game-view.view-enter, .bottom-dock.view-enter { animation: view-enter 380ms cubic-bezier(.2,.75,.25,1) both; }
+@keyframes view-enter { from { opacity: 0; transform: translateY(0.6rem); } to { opacity: 1; transform: translateY(0); } }
+.operational-toast {
+  position: fixed;
+  z-index: 70;
+  top: max(0.9rem, env(safe-area-inset-top));
+  left: 50%;
+  width: min(34rem, calc(100vw - 2rem));
+  padding: 0.72rem 1rem;
+  border: 1px solid rgba(100, 199, 241, 0.58);
+  border-left: 0.22rem solid #63cff8;
+  border-radius: 0.58rem;
+  background: rgba(5, 19, 30, 0.96);
+  box-shadow: 0 1rem 3rem rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(217, 244, 255, 0.08);
+  color: #e6f6ff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.4;
+  transform: translate(-50%, 0);
+}
+.operational-toast[data-tone="success"] { border-left-color: #54d49a; }
+.operational-toast[data-tone="warning"] { border-color: rgba(237, 158, 80, 0.66); border-left-color: #f0a14b; color: #fff2df; }
+.operational-toast.toast-enter { animation: toast-enter 260ms cubic-bezier(.2,.8,.25,1) both; }
+@keyframes toast-enter { from { opacity: 0; transform: translate(-50%, -0.8rem); } to { opacity: 1; transform: translate(-50%, 0); } }
+.game-screen[data-feedback="success"] .topbar { animation: feedback-success 520ms ease-out; }
+.game-screen[data-feedback="warning"] .topbar { animation: feedback-warning 520ms ease-out; }
+@keyframes feedback-success { 35% { box-shadow: 0 0 0 1px rgba(82, 212, 154, 0.58), 0 0 2rem rgba(45, 181, 126, 0.16); } }
+@keyframes feedback-warning { 35% { box-shadow: 0 0 0 1px rgba(233, 151, 73, 0.62), 0 0 2rem rgba(184, 76, 43, 0.18); } }
+.game-screen[data-operational-state="attention"] .line-status { box-shadow: 0 0 1rem rgba(215, 164, 67, 0.16); }
+.game-screen[data-operational-state="critical"] .line-status { box-shadow: 0 0 1.15rem rgba(221, 92, 112, 0.25); }
+.game-screen[data-operational-state="critical"] .topbar { border-color: rgba(198, 75, 93, 0.45); }
+
+@media (max-width: 760px) {
+  .game-screen { padding-bottom: max(0.7rem, env(safe-area-inset-bottom)); }
+  .vitals div:nth-child(3n)::after { display: none; }
+  .game-nav-button.active::after { width: 1.1rem; }
+  .operational-toast { top: auto; bottom: max(0.8rem, env(safe-area-inset-bottom)); font-size: 0.7rem; }
+  .panel::before { inset: 0.28rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}
+
+:root.reduced-motion .operational-toast.toast-enter, :root.reduced-motion .game-view.view-enter, :root.reduced-motion .bottom-dock.view-enter { animation: none; }
+:root.high-contrast .panel::before, :root.high-contrast .game-screen::before { display: none; }

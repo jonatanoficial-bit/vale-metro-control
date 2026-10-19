@@ -18,7 +18,7 @@ import {
   fleetSystemLabels,
   specializationCatalog,
   tickSession
-} from "./simulation.js?v=9";
+} from "./simulation.js?v=10";
 
 const els = {
   landing: document.querySelector("#landing-screen"),
@@ -77,7 +77,8 @@ const els = {
   tutorialTitle: document.querySelector("#tutorial-title"),
   tutorialCopy: document.querySelector("#tutorial-copy"),
   tutorialPrimary: document.querySelector("#tutorial-primary"),
-  tutorialSkip: document.querySelector("#tutorial-skip")
+  tutorialSkip: document.querySelector("#tutorial-skip"),
+  operationalToast: document.querySelector("#operational-toast")
 };
 
 let session;
@@ -88,6 +89,7 @@ let commandSequence = 0;
 let careerProfiles = {};
 let audioContext;
 let activeGameView = "central";
+let toastTimer;
 
 const accessibilityStorageKey = "vale-metro-control-accessibility";
 let accessibility = loadAccessibilityPreferences();
@@ -156,6 +158,7 @@ async function init() {
     saveAccessibilityPreferences();
     applyAccessibilityPreferences();
     if (setting === "audio" && accessibility.audio) playOperationalCue("enabled");
+    if (setting === "haptics" && accessibility.haptics) playHapticCue("success");
   });
   els.alertActions.addEventListener("click", (event) => {
     const button = event.target.closest("[data-alert-command]");
@@ -280,6 +283,7 @@ async function continueSavedSession() {
 
 function setGameView(view) {
   if (!['central', 'network', 'fleet', 'missions', 'career'].includes(view)) return;
+  const changed = activeGameView !== view;
   activeGameView = view;
   els.centralView.hidden = view !== 'central';
   els.networkView.hidden = view !== 'network';
@@ -297,12 +301,15 @@ function setGameView(view) {
   });
   if (session) {
     renderTutorial();
-    if (view === 'network') {
-      renderNetworkOverview();
-      renderScenarioConsole();
+    renderActiveView();
+    if (changed) {
+      const activeView = document.querySelector(`.game-view:not([hidden]), .bottom-dock:not([hidden])`);
+      animateView(activeView);
+      const viewNames = { central: "Central", network: "Rede", fleet: "Frota", missions: "Missões", career: "Carreira" };
+      announce(`${viewNames[view]} aberta.`);
+      playOperationalCue("navigate");
+      playHapticCue("light");
     }
-    if (view === 'fleet') renderFleetGarage();
-    if (view === 'central') window.requestAnimationFrame(renderMap);
   }
 }
 
@@ -334,14 +341,18 @@ function setTimeScale(scale) {
     button.classList.toggle("active", Number(button.dataset.time) === scale);
   });
   announce(scale === 0 ? "Simulação pausada." : `Velocidade ajustada para ${scale} vezes.`);
+  playOperationalCue(scale === 0 ? "pause" : "navigate");
+  playHapticCue("light");
   scheduleSave();
 }
 
 function runCommand(command) {
   if (!session) return;
   const result = applyCommand(session, { ...command, id: `cmd-${session.time}-${commandSequence++}` });
-  announce(result.message);
+  announce(result.message, result.accepted ? "success" : "warning");
   playOperationalCue(result.accepted ? "success" : "warning");
+  playHapticCue(result.accepted ? "success" : "warning");
+  flashOperationalState(result.accepted ? "success" : "warning");
   if (result.accepted && command.type === "HOLD_TRAIN") selected = { type: "train", id: command.trainId };
   render();
   scheduleSave();
@@ -350,7 +361,9 @@ function runCommand(command) {
 async function completeCurrentTurn() {
   if (!session) return;
   const result = applyCommand(session, { id: `cmd-${session.time}-${commandSequence++}`, type: "COMPLETE_TURN" });
-  announce(result.message);
+  announce(result.message, result.accepted ? "success" : "warning");
+  playOperationalCue(result.accepted ? "success" : "warning");
+  playHapticCue(result.accepted ? "success" : "warning");
   if (result.accepted) {
     const nextProfile = {
       ...session.career,
@@ -431,21 +444,39 @@ function render() {
       : "Encerrar turno";
   const activeIncidents = getActiveIncidents(session);
   const emergency = activeIncidents.some((incident) => incident.severity === "critical");
+  els.game.dataset.operationalState = emergency ? "critical" : activeIncidents.length ? "attention" : "stable";
   els.lineStatus.textContent = emergency ? "EMERGÊNCIA" : activeIncidents.length ? "ATENÇÃO" : "EM OPERAÇÃO";
   els.lineStatus.className = `status-pill ${emergency ? "danger" : activeIncidents.length ? "warning" : "good"}`;
-  renderTrains();
-  renderContext();
-  renderMission();
-  renderAlerts();
+  renderActiveView();
+  renderTutorial();
+}
+
+function renderActiveView() {
+  if (!session) return;
+  if (activeGameView === "central") {
+    renderTrains();
+    renderContext();
+    window.requestAnimationFrame(renderMap);
+    return;
+  }
+  if (activeGameView === "network") {
+    renderNetworkOverview();
+    renderScenarioConsole();
+    renderDispatchFeed();
+    return;
+  }
+  if (activeGameView === "fleet") {
+    renderFleetGarage();
+    return;
+  }
+  if (activeGameView === "missions") {
+    renderMission();
+    renderAlerts();
+    return;
+  }
   renderLog();
   renderPolicies();
   renderCampaign();
-  renderFleetGarage();
-  renderNetworkOverview();
-  renderScenarioConsole();
-  renderDispatchFeed();
-  renderTutorial();
-  renderMap();
 }
 
 function renderNetworkOverview() {
@@ -1213,7 +1244,7 @@ function selectFromMap(event) {
 }
 
 function handleKeyboard(event) {
-  if (!session || els.game.hidden || event.target.matches("button")) return;
+  if (!session || els.game.hidden || event.target.matches("button, input, textarea, select")) return;
   if (event.code === "Space") { event.preventDefault(); setTimeScale(session.timeScale === 0 ? 1 : 0); render(); }
   if (["Digit1", "Digit2", "Digit4"].includes(event.code)) { setTimeScale(Number(event.code.at(-1))); render(); }
 }
@@ -1222,10 +1253,13 @@ function formatCurrency(cents) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(cents / 100);
 }
 
-function announce(message) { els.live.textContent = message; }
+function announce(message, tone = "info") {
+  els.live.textContent = message;
+  showOperationalToast(message, tone);
+}
 
 function loadAccessibilityPreferences() {
-  const defaults = { highContrast: false, reducedMotion: false, largeText: false, audio: false };
+  const defaults = { highContrast: false, reducedMotion: false, largeText: false, audio: false, haptics: false };
   try {
     return { ...defaults, ...JSON.parse(localStorage.getItem(accessibilityStorageKey) || "{}") };
   } catch {
@@ -1265,16 +1299,49 @@ function playOperationalCue(kind) {
     const oscillator = audioContext.createOscillator();
     const gain = audioContext.createGain();
     const now = audioContext.currentTime;
-    const frequency = kind === "warning" ? 220 : kind === "enabled" ? 660 : 520;
+    if (audioContext.state === "suspended") void audioContext.resume().catch(() => {});
+    const frequency = kind === "warning" ? 220 : kind === "enabled" ? 660 : kind === "navigate" ? 430 : kind === "pause" ? 350 : 520;
     oscillator.frequency.setValueAtTime(frequency, now);
-    oscillator.frequency.exponentialRampToValueAtTime(frequency * (kind === "warning" ? 0.75 : 1.25), now + 0.12);
+    oscillator.frequency.exponentialRampToValueAtTime(frequency * (kind === "warning" ? 0.75 : kind === "pause" ? 0.82 : 1.25), now + 0.12);
     gain.gain.setValueAtTime(0.0001, now);
     gain.gain.exponentialRampToValueAtTime(0.05, now + 0.015);
     gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.15);
     oscillator.connect(gain).connect(audioContext.destination);
     oscillator.start(now);
-    oscillator.stop(now + 0.16);
+    oscillator.stop(now + (kind === "warning" ? 0.2 : 0.16));
   } catch { /* Navegadores podem bloquear áudio até uma interação válida. */ }
+}
+
+function playHapticCue(kind) {
+  if (!accessibility.haptics || typeof navigator.vibrate !== "function") return;
+  const patterns = { light: 12, success: [10, 40, 16], warning: [28, 55, 28] };
+  try { navigator.vibrate(patterns[kind] || 10); } catch { /* Vibração não está disponível neste aparelho. */ }
+}
+
+function showOperationalToast(message, tone = "info") {
+  if (!els.operationalToast || !message) return;
+  window.clearTimeout(toastTimer);
+  els.operationalToast.textContent = message;
+  els.operationalToast.dataset.tone = tone;
+  els.operationalToast.hidden = false;
+  els.operationalToast.classList.remove("toast-enter");
+  void els.operationalToast.offsetWidth;
+  els.operationalToast.classList.add("toast-enter");
+  toastTimer = window.setTimeout(() => { els.operationalToast.hidden = true; }, tone === "warning" ? 4800 : 3400);
+}
+
+function animateView(element) {
+  if (!element || accessibility.reducedMotion) return;
+  element.classList.remove("view-enter");
+  void element.offsetWidth;
+  element.classList.add("view-enter");
+  window.setTimeout(() => element.classList.remove("view-enter"), 420);
+}
+
+function flashOperationalState(tone) {
+  if (!els.game || accessibility.reducedMotion) return;
+  els.game.dataset.feedback = tone;
+  window.setTimeout(() => { delete els.game.dataset.feedback; }, 520);
 }
 
 function registerServiceWorker() {
